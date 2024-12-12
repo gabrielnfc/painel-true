@@ -48,7 +48,7 @@ export default function SearchOrdersPage() {
 			<div className="max-w-2xl mx-auto space-y-8">
 				<div className="text-center space-y-4">
 					<h1 className="text-4xl font-bold">Busca de Pedidos</h1>
-					<p className="text-muted-foreground">Pesquise pedidos usando:</p>
+					<p className="text-muted-foreground">Pesquise por pedidos usando:</p>
 					<ul className="text-sm text-muted-foreground space-y-1">
 						<li>• ID do pedido</li>
 						<li>• Número do pedido</li>
