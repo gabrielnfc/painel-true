@@ -23,6 +23,7 @@ export default function Sidebar() {
 
 	return (
 		<>
+			{/* Mobile menu button */}
 			<div className="lg:hidden fixed top-4 left-4 z-50">
 				<Button
 					variant="outline"
@@ -34,6 +35,7 @@ export default function Sidebar() {
 				</Button>
 			</div>
 
+			{/* Sidebar */}
 			<div
 				className={cn(
 					'fixed inset-y-0 left-0 z-40 transform bg-background border-r transition-all duration-300 ease-in-out lg:translate-x-0',
@@ -44,6 +46,7 @@ export default function Sidebar() {
 				onMouseLeave={() => setIsExpanded(false)}
 			>
 				<div className="flex h-full flex-col">
+					{/* Logo and title */}
 					<div className="flex h-16 items-center justify-between px-4 border-b overflow-hidden">
 						<Link
 							href="/"
@@ -67,6 +70,7 @@ export default function Sidebar() {
 						</Link>
 					</div>
 
+					{/* Navigation */}
 					<nav className="flex-1 space-y-1 px-2 py-4">
 						{navigation.map((item) => {
 							const isActive = pathname === item.href;
@@ -102,6 +106,7 @@ export default function Sidebar() {
 						})}
 					</nav>
 
+					{/* Footer */}
 					<div
 						className={cn(
 							'border-t p-4 transition-all duration-300',
@@ -115,15 +120,6 @@ export default function Sidebar() {
 					</div>
 				</div>
 			</div>
-
-			<main
-				className={cn(
-					'min-h-screen transition-all duration-300',
-					isExpanded ? 'lg:pl-64' : 'lg:pl-20'
-				)}
-			>
-				{/* Conteúdo principal */}
-			</main>
 		</>
 	);
 }

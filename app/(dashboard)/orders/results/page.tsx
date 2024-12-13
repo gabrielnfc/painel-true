@@ -664,6 +664,18 @@ export default function SearchResultsPage() {
 						/>
 					</div>
 				</Card>
+
+				{/* Botão Voltar */}
+				<div className="flex justify-center mt-8">
+					<Button
+						variant="outline"
+						onClick={() => router.push('/orders/search')}
+						className="w-full max-w-sm"
+					>
+						<ArrowLeft className="h-4 w-4 mr-2" />
+						Voltar para busca
+					</Button>
+				</div>
 			</div>
 		</div>
 	);
