@@ -1,51 +1,29 @@
-import { NextResponse } from 'next/server';
-import { bigQueryService } from '@/lib/bigquery';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { BigQueryService } from '@/lib/bigquery';
 
-const searchParamsSchema = z.object({
-  q: z.string().min(1, 'Termo de busca é obrigatório'),
-  page: z.string().optional().default('1'),
-  pageSize: z.string().optional().default('10'),
-  sortKey: z.enum(['data_pedido_status', 'numero_pedido', 'total_pedido']).optional().default('data_pedido_status'),
-  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-});
+export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    console.log('Parâmetros recebidos:', Object.fromEntries(searchParams));
-    
-    // Validate search parameters
-    const result = searchParamsSchema.safeParse({
-      q: searchParams.get('q'),
-      page: searchParams.get('page') || '1',
-      pageSize: searchParams.get('pageSize') || '10',
-      sortKey: searchParams.get('sortKey') || 'data_pedido_status',
-      sortOrder: searchParams.get('sortOrder') || 'desc',
-    });
+    const query = searchParams.get('q');
 
-    if (!result.success) {
-      console.error('Erro de validação:', result.error);
+    if (!query) {
       return NextResponse.json(
-        { 
-          error: 'Parâmetros de busca inválidos',
-          details: result.error.issues
-        },
+        { error: 'Parâmetro de busca é obrigatório' },
         { status: 400 }
       );
     }
 
-    const { q: query, page, pageSize, sortKey, sortOrder } = result.data;
-    console.log('Parâmetros validados:', { query, page, pageSize, sortKey, sortOrder });
-
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-
-    const results = await bigQueryService.searchOrder(query, {
-      sortKey,
-      sortOrder,
-      pageSize: parseInt(pageSize),
-      offset,
+    const bigQueryService = new BigQueryService({
+      projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
+      credentials: {
+        client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
+        private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      },
     });
+
+    const results = await bigQueryService.searchOrder(query);
 
     if (!results || results.length === 0) {
       return NextResponse.json(
@@ -54,19 +32,11 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      results,
-      pagination: {
-        page: parseInt(page),
-        pageSize: parseInt(pageSize),
-        total: results.length,
-        hasMore: results.length === parseInt(pageSize)
-      }
-    });
+    return NextResponse.json({ results });
   } catch (error) {
     console.error('Erro na busca:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar a busca' },
+      { error: 'Erro ao processar busca' },
       { status: 500 }
     );
   }

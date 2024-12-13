@@ -60,6 +60,18 @@ export interface OrderSearchResult {
   obs_interna: string;
 }
 
+export function getBigQueryClient() {
+  const config: BigQueryConfig = {
+    projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
+    credentials: {
+      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
+      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    },
+  };
+
+  return new BigQuery(config);
+}
+
 export class BigQueryService {
   private bigquery: BigQuery;
 

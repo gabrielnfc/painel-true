@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -262,7 +262,7 @@ function InfoItem({
 	);
 }
 
-export default function SearchResultsPage() {
+function ResultsContent() {
 	const searchParams = useSearchParams();
 	const router = useRouter();
 	const query = searchParams.get('q');
@@ -678,5 +678,13 @@ export default function SearchResultsPage() {
 				</div>
 			</div>
 		</div>
+	);
+}
+
+export default function ResultsPage() {
+	return (
+		<Suspense fallback={<div>Carregando...</div>}>
+			<ResultsContent />
+		</Suspense>
 	);
 }

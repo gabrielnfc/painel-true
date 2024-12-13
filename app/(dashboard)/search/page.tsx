@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import {
@@ -28,7 +28,7 @@ interface SearchResult {
 	itens_pedido: string;
 }
 
-export default function SearchResultsPage() {
+function SearchContent() {
 	const searchParams = useSearchParams();
 	const router = useRouter();
 	const query = searchParams.get('q');
@@ -118,7 +118,11 @@ export default function SearchResultsPage() {
 								return (
 									<TableRow key={order.id_pedido}>
 										<TableCell className="font-medium">
-											<InfoItem label="ID Pedido" value={order.id_pedido} isOrderId={true} />
+											<InfoItem
+												label="ID Pedido"
+												value={order.id_pedido}
+												isOrderId={true}
+											/>
 										</TableCell>
 										<TableCell>{cliente.nome || 'N/A'}</TableCell>
 										<TableCell>
@@ -139,5 +143,13 @@ export default function SearchResultsPage() {
 				</Card>
 			)}
 		</div>
+	);
+}
+
+export default function SearchPage() {
+	return (
+		<Suspense fallback={<div>Carregando...</div>}>
+			<SearchContent />
+		</Suspense>
 	);
 }

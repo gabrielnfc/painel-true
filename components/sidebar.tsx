@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Search, BarChart2, Menu, X } from 'lucide-react';
+import { Home, Search, BarChart2, Menu, X, MessageSquare } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -14,6 +14,7 @@ const navigation = [
 	{ name: 'Início', href: '/', icon: Home },
 	{ name: 'Buscar Pedidos', href: '/orders/search', icon: Search },
 	{ name: 'Relatório Geral', href: '/report', icon: BarChart2 },
+	{ name: 'Assistente IA', href: '/chat', icon: MessageSquare },
 ];
 
 export default function Sidebar() {

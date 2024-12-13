@@ -1,36 +1,28 @@
-import { NextResponse } from 'next/server';
-import { bigQueryService } from '@/lib/bigquery';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { BigQueryService } from '@/lib/bigquery';
 
-const reportParamsSchema = z.object({
-  startDate: z.string().min(1, 'Data inicial é obrigatória'),
-  endDate: z.string().min(1, 'Data final é obrigatória'),
-});
+export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    console.log('Parâmetros recebidos:', Object.fromEntries(searchParams));
-    
-    // Validate search parameters
-    const result = reportParamsSchema.safeParse({
-      startDate: searchParams.get('startDate'),
-      endDate: searchParams.get('endDate'),
-    });
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
 
-    if (!result.success) {
-      console.error('Erro de validação:', result.error);
+    if (!startDate || !endDate) {
       return NextResponse.json(
-        { 
-          error: 'Parâmetros inválidos',
-          details: result.error.issues
-        },
+        { error: 'Data inicial e final são obrigatórias' },
         { status: 400 }
       );
     }
 
-    const { startDate, endDate } = result.data;
-    console.log('Parâmetros validados:', { startDate, endDate });
+    const bigQueryService = new BigQueryService({
+      projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
+      credentials: {
+        client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
+        private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      },
+    });
 
     const results = await bigQueryService.getOrdersReport(startDate, endDate);
 
@@ -41,14 +33,11 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      results,
-      total: results.length
-    });
+    return NextResponse.json({ results });
   } catch (error) {
     console.error('Erro ao gerar relatório:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar relatório' },
+      { error: 'Erro ao gerar relatório' },
       { status: 500 }
     );
   }
