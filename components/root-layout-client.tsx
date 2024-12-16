@@ -25,10 +25,8 @@ export function RootLayoutClient({ children }: { children: React.ReactNode }) {
 							},
 							emailCode: {
 								title: 'Verificar email',
-								subtitle: 'para continuar no Sistema de Pedidos',
+								subtitle: 'Digite o código de verificação enviado para seu email',
 								formTitle: 'Código de verificação',
-								formSubtitle:
-									'Digite o código de verificação enviado para seu email',
 							},
 						},
 					}}
