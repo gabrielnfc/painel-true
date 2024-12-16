@@ -62,6 +62,7 @@ export interface OrderSearchResult {
 
 export class BigQueryService {
   private bigquery: BigQuery;
+  private readonly queryTimeout = 30000; // 30 segundos de timeout
 
   constructor(config?: BigQueryConfig) {
     const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
@@ -174,17 +175,30 @@ export class BigQueryService {
         pageSize,
         offset,
       },
+      timeout: this.queryTimeout,
     };
 
     console.log('Query do BigQuery:', query);
     console.log('Parâmetros da query:', queryOptions.params);
 
     try {
-      const [rows] = await this.bigquery.query(queryOptions);
+      // Adiciona um timeout manual usando Promise.race
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('BigQuery query timeout'));
+        }, this.queryTimeout);
+      });
+
+      const queryPromise = this.bigquery.query(queryOptions);
+      const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
+
       console.log('Resultados encontrados:', rows?.length || 0);
       return rows as OrderSearchResult[];
     } catch (error) {
-      console.error('Erro no BigQuery:', error);
+      console.error('Erro detalhado no BigQuery:', error);
+      if (error instanceof Error && error.message === 'BigQuery query timeout') {
+        throw new Error('A consulta ao BigQuery excedeu o tempo limite');
+      }
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
