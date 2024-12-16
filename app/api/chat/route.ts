@@ -3,6 +3,31 @@ import { bigQueryService } from '@/lib/bigquery';
 import { NextResponse } from 'next/server';
 import { systemPrompt } from '@/lib/prompts/system-prompt';
 
+interface ClienteInfo {
+	nome?: string;
+	cpf_cnpj?: string;
+	email?: string;
+	fone?: string;
+}
+
+// Função para verificar variáveis de ambiente necessárias
+function checkRequiredEnvVars() {
+	const required = {
+		OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+		GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID,
+		GOOGLE_CLOUD_CLIENT_EMAIL: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+		GOOGLE_CLOUD_PRIVATE_KEY: process.env.GOOGLE_CLOUD_PRIVATE_KEY,
+	};
+
+	const missing = Object.entries(required)
+		.filter(([_, value]) => !value)
+		.map(([key]) => key);
+
+	if (missing.length > 0) {
+		throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+	}
+}
+
 // Função auxiliar para formatar os dados do pedido
 function formatOrderData(order: any) {
 	// Mapeia os status do pedido
@@ -30,11 +55,11 @@ function formatOrderData(order: any) {
 	};
 
 	// Tenta fazer o parse do JSON do cliente
-	let clienteInfo = {};
+	let clienteInfo: ClienteInfo = {};
 	try {
-		clienteInfo = JSON.parse(order.cliente_json || '{}');
+		clienteInfo = JSON.parse(order.cliente_json || '{}') as ClienteInfo;
 	} catch (e) {
-		console.warn('Erro ao fazer parse do JSON do cliente:', e);
+		// Ignora erro de parse
 	}
 
 	return `
@@ -71,23 +96,18 @@ ${order.obs_interna ? `💬 Observações internas:\n${order.obs_interna}` : ''}
 
 export async function POST(req: Request) {
 	try {
-		console.log('Iniciando processamento da requisição de chat');
-
-		// Check for API key before processing
-		if (!process.env.OPENAI_API_KEY) {
-			console.error('OpenAI API key is missing. Please add OPENAI_API_KEY to your environment variables.');
+		// Verifica todas as variáveis de ambiente necessárias
+		try {
+			checkRequiredEnvVars();
+		} catch (error: any) {
 			return NextResponse.json(
-				{ error: 'OpenAI API key is not configured. Please contact the administrator.' },
+				{ error: 'Erro de configuração do servidor. Por favor, contate o administrador.' },
 				{ status: 500 }
 			);
 		}
 
 		const { messages } = await req.json();
-		console.log('Mensagens recebidas:', messages);
-
-		// Verifica se há um número de pedido na última mensagem
 		const lastMessage = messages[messages.length - 1].content;
-		console.log('Última mensagem:', lastMessage);
 		
 		// Primeiro tenta encontrar um número com hífen (para numero_ordem_compra)
 		let orderMatch = lastMessage.match(/\b\d+(?:-\d+)?\b/);
@@ -103,26 +123,18 @@ export async function POST(req: Request) {
 				lastMessage.includes('-');
 		}
 
-		console.log('Número encontrado:', orderMatch?.[0]);
-		console.log('É busca por ordem de compra:', isOrderNumberSearch);
-
-		// Se a mensagem contém um número que parece ser um pedido, SEMPRE aguardar o BigQuery
+		// Se a mensagem contém um número que parece ser um pedido
 		if (orderMatch) {
 			try {
 				// Se não for busca por número de ordem de compra, remove o hífen
 				const searchValue = isOrderNumberSearch 
 					? orderMatch[0] 
 					: orderMatch[0].replace(/-/g, '');
-
-				console.log('Iniciando busca no BigQuery com valor:', searchValue);
 				
 				// Aguarda explicitamente a resposta do BigQuery
 				const results = await bigQueryService.searchOrder(searchValue);
-				console.log('Resultados do BigQuery:', results?.length || 0, 'pedidos encontrados');
 
 				if (results && results.length > 0) {
-					console.log('Pedido encontrado, processando resposta');
-					
 					// Initialize OpenAI client
 					const openai = new OpenAI({
 						apiKey: process.env.OPENAI_API_KEY,
@@ -140,7 +152,7 @@ export async function POST(req: Request) {
 							},
 							...messages,
 						],
-						temperature: 0.3, // Reduzido ainda mais para garantir consistência
+						temperature: 0.3,
 						max_tokens: 1000,
 					});
 
@@ -148,7 +160,6 @@ export async function POST(req: Request) {
 						message: completion.choices[0].message.content,
 					});
 				} else {
-					console.log('Nenhum pedido encontrado');
 					return NextResponse.json({
 						message: `❌ Não encontrei nenhum pedido com o número fornecido: ${searchValue}.\n` +
 							'⚠️ O número foi informado corretamente? Por favor, verifique e me envie novamente.\n\n' +
@@ -159,21 +170,26 @@ export async function POST(req: Request) {
 							'- Número da ordem de compra (pode conter hífen, exemplo: 1234567890-01)',
 					});
 				}
-			} catch (error) {
-				console.error('Erro detalhado ao buscar pedido:', error);
+			} catch (error: any) {
+				// Erro específico para problemas de autenticação do BigQuery
+				if (error.message?.includes('credentials') || error.message?.includes('authentication')) {
+					return NextResponse.json(
+						{ error: 'Erro de autenticação ao acessar os dados. Por favor, contate o administrador.' },
+						{ status: 401 }
+					);
+				}
+
 				return NextResponse.json(
 					{ error: 'Erro ao buscar informações do pedido. Por favor, tente novamente em alguns instantes.' },
 					{ status: 500 }
 				);
 			}
 		} else {
-			// Se não há número de pedido na mensagem, processa normalmente com o OpenAI
 			// Initialize OpenAI client
 			const openai = new OpenAI({
 				apiKey: process.env.OPENAI_API_KEY,
 			});
 
-			console.log('Processando mensagem sem busca de pedido');
 			const completion = await openai.chat.completions.create({
 				model: 'gpt-4',
 				messages: [
@@ -183,7 +199,7 @@ export async function POST(req: Request) {
 					},
 					...messages,
 				],
-				temperature: 0.5, // Reduzido para diminuir criatividade
+				temperature: 0.3,
 				max_tokens: 1000,
 			});
 
@@ -191,11 +207,9 @@ export async function POST(req: Request) {
 				message: completion.choices[0].message.content,
 			});
 		}
-	} catch (error) {
-		console.error('Erro detalhado na rota de chat:', error);
-		
+	} catch (error: any) {
 		// Verifica se é um erro de timeout
-		if (error instanceof Error && error.message.includes('timeout')) {
+		if (error.message?.includes('timeout')) {
 			return NextResponse.json(
 				{ error: 'A operação demorou muito para responder. Por favor, tente novamente em alguns instantes.' },
 				{ status: 504 }
