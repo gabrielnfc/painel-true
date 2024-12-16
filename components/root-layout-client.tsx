@@ -16,18 +16,10 @@ export function RootLayoutClient({ children }: { children: React.ReactNode }) {
 			</head>
 			<body className={inter.className}>
 				<ClerkProvider
-					localization={{
-						signIn: {
-							start: {
-								title: 'Entrar',
-								subtitle: 'para continuar no Sistema de Pedidos',
-								actionText: 'Não tem uma conta?',
-							},
-							emailCode: {
-								title: 'Verificar email',
-								subtitle: 'Digite o código de verificação enviado para seu email',
-								formTitle: 'Código de verificação',
-							},
+					appearance={{
+						elements: {
+							formButtonPrimary: 'bg-primary hover:bg-primary/90',
+							footerActionLink: 'text-primary hover:text-primary/90',
 						},
 					}}
 				>
