@@ -3,12 +3,25 @@ import { bigQueryService } from '@/lib/bigquery';
 import { NextResponse } from 'next/server';
 import { systemPrompt } from '@/lib/prompts/system-prompt';
 
+// Check for OpenAI API key
+if (!process.env.OPENAI_API_KEY) {
+	console.error('OpenAI API key is missing. Please add OPENAI_API_KEY to your environment variables.');
+}
+
 const openai = new OpenAI({
 	apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req: Request) {
 	try {
+		// Check for API key before processing
+		if (!process.env.OPENAI_API_KEY) {
+			return NextResponse.json(
+				{ error: 'OpenAI API key is not configured. Please contact the administrator.' },
+				{ status: 500 }
+			);
+		}
+
 		const { messages } = await req.json();
 
 		// Verifica se há um número de pedido na última mensagem
