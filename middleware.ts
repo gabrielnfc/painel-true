@@ -1,24 +1,22 @@
-import { authMiddleware } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import { getAuth } from '@clerk/nextjs/server';
+import type { NextRequest } from 'next/server';
 
-export default authMiddleware({
-  publicRoutes: ["/sign-in"],
-  ignoredRoutes: ["/api/webhook"],
-  afterAuth(auth, req, evt) {
-    if (req.url.includes('/sign-up')) {
-      return Response.redirect(new URL('/sign-in', req.url));
-    }
+export default async function middleware(req: NextRequest) {
+  const { userId } = await getAuth(req);
 
-    if (!auth.userId && !auth.isPublicRoute) {
-      const signInUrl = new URL('/sign-in', req.url);
-      signInUrl.searchParams.set('redirect_url', req.url);
-      return Response.redirect(signInUrl);
-    }
+  if (!userId && !req.url.includes('/sign-in')) {
+    const signInUrl = new URL('/sign-in', req.url);
+    return NextResponse.redirect(signInUrl);
+  }
 
-    if (auth.userId && req.url.includes('/sign-in')) {
-      return Response.redirect(new URL('/', req.url));
-    }
-  },
-});
+  if (userId && req.url.includes('/sign-in')) {
+    const homeUrl = new URL('/', req.url);
+    return NextResponse.redirect(homeUrl);
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
