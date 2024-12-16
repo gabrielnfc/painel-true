@@ -126,7 +126,7 @@ export default function ChatPage() {
 		};
 
 		processQueue();
-	}, [messageQueue, messages]);
+	}, [messageQueue, messages.length]);
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
