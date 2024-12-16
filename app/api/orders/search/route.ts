@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BigQueryService } from '@/lib/bigquery';
+import { bigQueryService } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +7,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '10');
+    const sortKey = searchParams.get('sortKey') || 'data_pedido_status';
+    const sortOrder = (searchParams.get('sortOrder') || 'desc') as 'asc' | 'desc';
 
     if (!query) {
       return NextResponse.json(
@@ -15,15 +19,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const bigQueryService = new BigQueryService({
-      projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
-      credentials: {
-        client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
-        private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-      },
+    const results = await bigQueryService.searchOrder(query, {
+      pageSize,
+      offset: (page - 1) * pageSize,
+      sortKey,
+      sortOrder,
     });
-
-    const results = await bigQueryService.searchOrder(query);
 
     if (!results || results.length === 0) {
       return NextResponse.json(

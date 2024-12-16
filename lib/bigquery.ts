@@ -60,23 +60,24 @@ export interface OrderSearchResult {
   obs_interna: string;
 }
 
-export function getBigQueryClient() {
-  const config: BigQueryConfig = {
-    projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
-    credentials: {
-      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
-      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    },
-  };
-
-  return new BigQuery(config);
-}
-
-export class BigQueryService {
+class BigQueryService {
   private bigquery: BigQuery;
 
-  constructor(config: BigQueryConfig) {
-    this.bigquery = new BigQuery(config);
+  constructor() {
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    const credentials = {
+      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    };
+
+    if (!projectId || !credentials.client_email || !credentials.private_key) {
+      throw new Error('Missing required BigQuery credentials');
+    }
+
+    this.bigquery = new BigQuery({
+      projectId,
+      credentials,
+    });
   }
 
   async searchOrder(
@@ -281,10 +282,5 @@ export class BigQueryService {
   }
 }
 
-export const bigQueryService = new BigQueryService({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT_ID!,
-  credentials: {
-    client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL!,
-    private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY!.replace(/\\n/g, '\n'),
-  },
-});
+// Export a singleton instance
+export const bigQueryService = new BigQueryService();
