@@ -60,12 +60,12 @@ export interface OrderSearchResult {
   obs_interna: string;
 }
 
-class BigQueryService {
+export class BigQueryService {
   private bigquery: BigQuery;
 
-  constructor() {
-    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-    const credentials = {
+  constructor(config?: BigQueryConfig) {
+    const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
+    const credentials = config?.credentials || {
       client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
       private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
     };

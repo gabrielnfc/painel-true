@@ -16,13 +16,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const bigQueryService = new BigQueryService({
-      projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
-      credentials: {
-        client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '',
-        private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-      },
-    });
+    const bigQueryService = new BigQueryService();
 
     const results = await bigQueryService.getOrdersReport(startDate, endDate);
 
