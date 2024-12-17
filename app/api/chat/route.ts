@@ -148,6 +148,44 @@ ${order.chave_acesso_nota ? `- Chave de acesso: ${order.chave_acesso_nota}` : ''
 ${order.obs_interna ? `💬 Observações internas:\n${order.obs_interna}` : ''}`;
 }
 
+// Função para extrair número de qualquer padrão
+function extractNumber(message: string): { value: string; type: string } | null {
+	// Padrões de identificação
+	const patterns = {
+		pedidoNumero: /(?:pedido|numero|pedido numero|número)[\s:]*(\d+)/i,
+		pedidoId: /(?:pedido id|id pedido|id)[\s:]*(\d+)/i,
+		notaFiscal: /(?:nota fiscal|nf|nfe)[\s:]*(\d+)/i,
+		ordemCompra: /(?:ordem|compra|ordem de compra|oc)[\s:]*(\d+)-(\d+)/i,
+		numeroComHifen: /^(\d+-\d+)$/
+	};
+
+	// Tenta cada padrão em ordem
+	for (const [key, pattern] of Object.entries(patterns)) {
+		const match = message.match(pattern);
+		if (match) {
+			// Para ordem de compra e número com hífen, junta os grupos capturados
+			if (key === 'ordemCompra') {
+				return {
+					value: `${match[1]}-${match[2]}`,
+					type: key
+				};
+			}
+			// Para número simples com hífen
+			if (key === 'numeroComHifen') {
+				return {
+					value: match[1],
+					type: 'ordemCompra'
+				};
+			}
+			return {
+				value: match[1],
+				type: key
+			};
+		}
+	}
+	return null;
+}
+
 export async function POST(req: Request) {
 	console.log('Iniciando processamento da requisição POST /api/chat');
 	
@@ -164,36 +202,24 @@ export async function POST(req: Request) {
 		}
 
 		const { messages } = await req.json();
-		const lastMessage = messages[messages.length - 1].content;
+		const lastMessage = messages[messages.length - 1].content.toLowerCase();
 		console.log('Última mensagem recebida:', lastMessage);
+
+		// Extrai o número e tipo da mensagem
+		const extracted = extractNumber(lastMessage.trim());
 		
-		// Primeiro tenta encontrar um número com hífen (para numero_ordem_compra)
-		let orderMatch = lastMessage.match(/\b\d+(?:-\d+)?\b/);
-		let isOrderNumberSearch = false;
+		// Se encontrou qualquer tipo de número, tenta buscar no BigQuery
+		if (extracted) {
+			const searchValue = extracted.value;
+			const searchType = extracted.type;
+			
+			console.log('Número extraído:', {
+				value: searchValue,
+				type: searchType,
+				originalMessage: lastMessage
+			});
 
-		// Se não encontrou com hífen, procura apenas números
-		if (!orderMatch) {
-			orderMatch = lastMessage.match(/\b\d+\b/);
-		} else {
-			// Se encontrou com hífen, verifica se é realmente um número de ordem de compra
-			isOrderNumberSearch = lastMessage.toLowerCase().includes('ordem') || 
-				lastMessage.toLowerCase().includes('compra') ||
-				lastMessage.includes('-');
-		}
-
-		console.log('Resultado da análise da mensagem:', {
-			orderMatch: orderMatch?.[0],
-			isOrderNumberSearch
-		});
-
-		// Se a mensagem contém um número que parece ser um pedido
-		if (orderMatch) {
 			try {
-				// Se não for busca por número de ordem de compra, remove o hífen
-				const searchValue = isOrderNumberSearch 
-					? orderMatch[0] 
-					: orderMatch[0].replace(/-/g, '');
-				
 				console.log('Iniciando busca no BigQuery com valor:', searchValue);
 
 				// Aguarda explicitamente a resposta do BigQuery
@@ -211,12 +237,31 @@ export async function POST(req: Request) {
 					const formattedOrderData = formatOrderData(results[0]);
 					console.log('Dados do pedido formatados com sucesso');
 
+					// Adiciona contexto sobre como o pedido foi encontrado
+					let searchContext = '';
+					switch (searchType) {
+						case 'pedidoNumero':
+							searchContext = `Encontrei o pedido pelo número ${searchValue}`;
+							break;
+						case 'pedidoId':
+							searchContext = `Encontrei o pedido pelo ID ${searchValue}`;
+							break;
+						case 'notaFiscal':
+							searchContext = `Encontrei o pedido pela nota fiscal ${searchValue}`;
+							break;
+						case 'ordemCompra':
+							searchContext = `Encontrei o pedido pela ordem de compra ${searchValue}`;
+							break;
+						default:
+							searchContext = `Encontrei o pedido usando o número ${searchValue}`;
+					}
+
 					const completion = await openai.chat.completions.create({
 						model: 'gpt-4-0125-preview',
 						messages: [
 							{
 								role: 'system',
-								content: systemPrompt + `\n\nIMPORTANTE: Você deve usar APENAS as informações fornecidas abaixo e manter o formato com os ícones conforme especificado acima. NUNCA invente ou suponha informações que não estejam presentes nos dados.\n\n${formattedOrderData}`,
+								content: systemPrompt + `\n\nIMPORTANTE: Você deve usar APENAS as informações fornecidas abaixo e manter o formato com os ícones conforme especificado acima. NUNCA invente ou suponha informações que não estejam presentes nos dados.\n\nContexto da busca: ${searchContext}\n\n${formattedOrderData}`,
 							},
 							...messages,
 						],
@@ -232,13 +277,14 @@ export async function POST(req: Request) {
 				} else {
 					console.log('Nenhum resultado encontrado no BigQuery');
 					return NextResponse.json({
-						message: `❌ Não encontrei nenhum pedido com o número fornecido: ${searchValue}.\n` +
-							'⚠️ O número foi informado corretamente? Por favor, verifique e me envie novamente.\n\n' +
-							'🔍 Lembre-se que você pode buscar por:\n' +
-							'- ID do pedido (apenas números)\n' +
-							'- Número do pedido (apenas números)\n' +
-							'- ID da nota fiscal (apenas números)\n' +
-							'- Número da ordem de compra (pode conter hífen, exemplo: 1234567890-01)',
+						message: `❌ Não encontrei nenhum pedido com o número ${searchValue}.\n` +
+							'⚠️ Por favor, verifique se o número está correto e tente novamente.\n\n' +
+							'🔍 Você pode buscar usando qualquer um destes formatos:\n' +
+							'• Número do pedido (exemplo: "pedido numero: 123456")\n' +
+							'• ID do pedido (exemplo: "pedido id: 123456")\n' +
+							'• Nota fiscal (exemplo: "nota fiscal: 123456")\n' +
+							'• Ordem de compra (exemplo: "ordem: 123456-01")\n' +
+							'• Ou simplesmente digite o número'
 					});
 				}
 			} catch (error: any) {
