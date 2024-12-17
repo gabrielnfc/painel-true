@@ -1,190 +1,153 @@
-import { formatDate } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-
-function getOrderStatus(status: string): string {
-  const statusMap: { [key: string]: string } = {
-    '8': 'Dados Incompletos',
-    '0': 'Aberta',
-    '3': 'Aprovada',
-    '4': 'Preparando Envio',
-    '1': 'Faturada',
-    '7': 'Pronto Envio',
-    '5': 'Enviada',
-    '6': 'Entregue',
-    '2': 'Cancelada',
-    '9': 'Não Entregue'
-  };
-
-  return statusMap[status] || status;
-}
-
-function getStatusColor(status: string): string {
-  const colorMap: { [key: string]: string } = {
-    '8': 'text-yellow-600',
-    '0': 'text-blue-600',
-    '3': 'text-green-600',
-    '4': 'text-purple-600',
-    '1': 'text-blue-600',
-    '7': 'text-indigo-600',
-    '5': 'text-orange-600',
-    '6': 'text-green-600',
-    '2': 'text-red-600',
-    '9': 'text-red-600'
-  };
-
-  return colorMap[status] || '';
-}
-
-function getShippingResponsibility(code: string): string {
-  const shippingMap: { [key: string]: string } = {
-    'R': 'Contratação do Frete por conta do Remetente (CIF)',
-    'D': 'Contratação do Frete por conta do Destinatário (FOB)',
-    'T': 'Contratação do Frete por conta de Terceiros',
-    '3': 'Transporte Próprio por conta do Remetente',
-    '4': 'Transporte Próprio por conta do Destinatário',
-    'S': 'Sem Ocorrência de Transporte'
-  };
-
-  return shippingMap[code] || code;
-}
+import { cn } from '@/lib/utils';
+import { ExternalLink } from 'lucide-react';
+import { TooltipWrapper } from '@/components/ui/tooltip-wrapper';
 
 interface InfoItemProps {
-  label: string;
-  value: string | null | undefined;
-  isLink?: boolean;
-  isStatus?: boolean;
-  isShipping?: boolean;
-  isDate?: boolean;
-  isOrderId?: boolean;
-  isVtexOrder?: boolean;
-  className?: string;
-  truncate?: boolean;
+	label: string;
+	value: string | null;
+	isDate?: boolean;
+	isStatus?: boolean;
+	isOrderId?: boolean;
+	isVtexOrder?: boolean;
+	isShipping?: boolean;
+	truncate?: boolean;
+	className?: string;
 }
 
-export function InfoItem({ 
-  label, 
-  value, 
-  isLink = false, 
-  isStatus = false,
-  isShipping = false,
-  isDate = false,
-  isOrderId = false,
-  isVtexOrder = false,
-  className = '',
-  truncate = false
+export function InfoItem({
+	label,
+	value,
+	isDate,
+	isStatus,
+	isOrderId,
+	isVtexOrder,
+	isShipping,
+	truncate,
+	className,
 }: InfoItemProps) {
-  if (!value || value === 'N/A') return (
-    <div className="flex flex-col">
-      <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className="text-sm text-muted-foreground">N/A</dd>
-    </div>
-  );
+	if (!value) return null;
 
-  if (truncate) {
-    const displayValue = value.length > 13 ? `${value.slice(0, 13)}...` : value;
-    
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="text-sm">
-          <TooltipProvider>
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger className="cursor-help">
-                {displayValue}
-              </TooltipTrigger>
-              <TooltipContent className="p-2 max-w-[400px] break-all bg-white border shadow-lg">
-                {value}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </dd>
-      </div>
-    );
-  }
+	// Função para formatar a data
+	const formatDate = (dateString: string) => {
+		if (!dateString) return 'N/A';
+		try {
+			const date = new Date(dateString);
+			return date.toLocaleDateString('pt-BR', {
+				day: '2-digit',
+				month: '2-digit',
+				year: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit',
+			});
+		} catch {
+			return dateString;
+		}
+	};
 
-  if (isVtexOrder && value) {
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="text-sm">
-          <a 
-            href={`https://tfcucl.myvtex.com/admin/orders/${value}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:text-blue-700 hover:underline"
-          >
-            {value}
-          </a>
-        </dd>
-      </div>
-    );
-  }
+	// Função para formatar o status
+	const formatStatus = (status: string) => {
+		return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+	};
 
-  if (isOrderId && value) {
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="text-sm">
-          <a 
-            href={`https://erp.tiny.com.br/vendas#edit/${value}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:text-blue-700 hover:underline"
-          >
-            {value}
-          </a>
-        </dd>
-      </div>
-    );
-  }
+	// Função para formatar o frete por conta
+	const formatShipping = (shipping: string) => {
+		const map: { [key: string]: string } = {
+			R: 'Remetente (CIF)',
+			D: 'Destinatário (FOB)',
+		};
+		return map[shipping] || shipping;
+	};
 
-  if (isStatus) {
-    const statusText = getOrderStatus(value);
-    const statusColor = getStatusColor(value);
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className={`text-sm font-medium ${statusColor}`}>
-          {statusText}
-        </dd>
-      </div>
-    );
-  }
+	// Verifica se é um link de rastreamento
+	const isTrackingLink =
+		label.toLowerCase().includes('rastreamento') &&
+		(value.includes('http') || value.startsWith('www.'));
 
-  if (isShipping) {
-    const shippingText = getShippingResponsibility(value);
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="text-sm">
-          {shippingText}
-        </dd>
-      </div>
-    );
-  }
+	// Função para formatar URL
+	const formatUrl = (url: string) => {
+		if (!url.startsWith('http')) {
+			return `https://${url}`;
+		}
+		return url;
+	};
 
-  if (isDate) {
-    return (
-      <div className="flex flex-col">
-        <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="text-sm">
-          {formatDate(value)}
-        </dd>
-      </div>
-    );
-  }
+	// Renderiza o valor apropriado
+	const renderValue = () => {
+		// Link de rastreamento
+		if (isTrackingLink) {
+			return (
+				<a
+					href={formatUrl(value)}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium"
+				>
+					Rastrear Pedido
+					<ExternalLink className="h-4 w-4" />
+				</a>
+			);
+		}
 
-  return (
-    <div className="flex flex-col">
-      <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className={`text-sm ${isLink ? 'text-primary hover:underline cursor-pointer' : ''} ${className}`}>
-        {value}
-      </dd>
-    </div>
-  );
+		// Link do Tiny ERP
+		if (isOrderId) {
+			const tinyUrl = `https://erp.tiny.com.br/vendas#edit/${value}`;
+			return (
+				<a
+					href={tinyUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary hover:text-primary/80 hover:underline font-medium"
+				>
+					{value}
+				</a>
+			);
+		}
+
+		// Link da VTEX
+		if (isVtexOrder && value) {
+			const vtexUrl = `https://tfcucl.myvtex.com/admin/orders/${value}`;
+			return (
+				<div className={cn('space-y-1', className)}>
+					<p className="text-sm text-muted-foreground">{label}</p>
+					<p className="font-medium">
+						<a
+							href={vtexUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-primary hover:text-primary/80 hover:underline font-medium"
+						>
+							{value}
+						</a>
+					</p>
+				</div>
+			);
+		}
+
+		let displayValue = value;
+
+		if (isDate) {
+			displayValue = formatDate(value);
+		} else if (isStatus) {
+			displayValue = formatStatus(value);
+		} else if (isShipping) {
+			displayValue = formatShipping(value);
+		}
+
+		if (truncate) {
+			return (
+				<TooltipWrapper content={displayValue}>
+					<span className="truncate block max-w-[200px]">{displayValue}</span>
+				</TooltipWrapper>
+			);
+		}
+
+		return displayValue;
+	};
+
+	return (
+		<div className={cn('space-y-1', className)}>
+			<p className="text-sm text-muted-foreground">{label}</p>
+			<p className="font-medium">{renderValue()}</p>
+		</div>
+	);
 }

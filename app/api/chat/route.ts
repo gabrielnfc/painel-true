@@ -1,369 +1,226 @@
-import { OpenAI } from 'openai';
-import { bigQueryService } from '@/lib/bigquery';
 import { NextResponse } from 'next/server';
+import { BigQueryService } from '@/lib/bigquery';
 import { systemPrompt } from '@/lib/prompts/system-prompt';
 
-interface ClienteInfo {
-	nome?: string;
-	cpf_cnpj?: string;
-	email?: string;
-	fone?: string;
-}
+const bigQueryService = new BigQueryService();
 
-// Função para verificar variáveis de ambiente necessárias
-function checkRequiredEnvVars() {
-	const required = {
-		OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-		GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID,
-		GOOGLE_CLOUD_CLIENT_EMAIL: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-		GOOGLE_CLOUD_PRIVATE_KEY: process.env.GOOGLE_CLOUD_PRIVATE_KEY,
-	};
-
-	const missing = Object.entries(required)
-		.filter(([_, value]) => !value)
-		.map(([key]) => key);
-
-	if (missing.length > 0) {
-		throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-	}
-
-	// Validação específica para a API key do OpenAI
-	if (!process.env.OPENAI_API_KEY?.startsWith('sk-')) {
-		throw new Error('Invalid OpenAI API key format');
-	}
-
-	// Log environment variables status (without exposing sensitive data)
-	console.log('Environment variables check:', {
-		OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'Presente e no formato correto' : 'Ausente ou formato inválido',
-		GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID,
-		GOOGLE_CLOUD_CLIENT_EMAIL: !!process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-		GOOGLE_CLOUD_PRIVATE_KEY: !!process.env.GOOGLE_CLOUD_PRIVATE_KEY,
-	});
-}
-
-// Função para inicializar o cliente OpenAI com validação
-async function initializeOpenAI() {
-	if (!process.env.OPENAI_API_KEY) {
-		throw new Error('OpenAI API key is missing');
-	}
-
+export async function POST(request: Request) {
 	try {
-		const openai = new OpenAI({
-			apiKey: process.env.OPENAI_API_KEY,
-		});
+		const { messages, lastOrderNumber, currentOrderData, isOrderRelatedQuestion } = await request.json();
 
-		// Teste de conexão simples com GPT-4 Turbo
-		await openai.chat.completions.create({
-			model: 'gpt-4-0125-preview',
-			messages: [{ role: 'system', content: 'Test connection' }],
-			max_tokens: 5,
-		});
-
-		console.log('Conexão com OpenAI testada com sucesso');
-		return openai;
-	} catch (error: any) {
-		console.error('Erro ao inicializar OpenAI:', {
-			error: error.message,
-			status: error.response?.status,
-			data: error.response?.data
-		});
-		
-		if (error.response?.status === 401) {
-			throw new Error('OpenAI API key inválida');
-		} else if (error.response?.status === 429) {
-			throw new Error('Limite de requisições OpenAI excedido');
-		} else if (error.response?.status === 500) {
-			throw new Error('Erro interno do servidor OpenAI');
-		} else if (error.message?.includes('model')) {
-			console.error('Erro com o modelo GPT-4:', error);
-			throw new Error('Modelo GPT-4 não disponível para esta API key');
-		}
-		throw error;
-	}
-}
-
-// Função auxiliar para formatar os dados do pedido
-function formatOrderData(order: any) {
-	// Mapeia os status do pedido
-	const statusMap: { [key: string]: string } = {
-		'8': 'Dados Incompletos',
-		'0': 'Aberta',
-		'3': 'Aprovada',
-		'4': 'Preparando Envio',
-		'1': 'Faturada',
-		'7': 'Pronto Envio',
-		'5': 'Enviada',
-		'6': 'Entregue',
-		'2': 'Cancelada',
-		'9': 'Não Entregue'
-	};
-
-	// Mapeia os tipos de frete
-	const freteMap: { [key: string]: string } = {
-		'R': 'CIF (Remetente)',
-		'D': 'FOB (Destinatário)',
-		'T': 'Terceiros',
-		'3': 'Próprio Remetente',
-		'4': 'Próprio Destinatário',
-		'S': 'Sem Transporte'
-	};
-
-	// Tenta fazer o parse do JSON do cliente
-	let clienteInfo: ClienteInfo = {};
-	try {
-		clienteInfo = JSON.parse(order.cliente_json || '{}') as ClienteInfo;
-	} catch (e) {
-		console.error('Erro ao fazer parse do cliente_json:', e);
-	}
-
-	return `
-Aqui estão os detalhes do pedido solicitado:
-
-📦 Pedido #${order.numero_pedido}
-📅 Data do pedido: ${order.data_pedido}
-✅ Status: ${statusMap[order.situacao_pedido] || order.situacao_pedido}
-
-👤 Informações do Cliente:
-${clienteInfo.nome ? `- Nome: ${clienteInfo.nome}` : ''}
-${clienteInfo.cpf_cnpj ? `- CPF/CNPJ: ${clienteInfo.cpf_cnpj}` : ''}
-${clienteInfo.email ? `📧 Email: ${clienteInfo.email}` : ''}
-${clienteInfo.fone ? `📱 Telefone: ${clienteInfo.fone}` : ''}
-
-🚚 Informações de Entrega:
-- Transportadora: ${order.nome_transportador || 'Não definida'}
-- Tipo de frete: ${freteMap[order.frete_por_conta] || order.frete_por_conta}
-${order.codigo_rastreamento ? `- Código de rastreamento: ${order.codigo_rastreamento}` : ''}
-${order.url_rastreamento ? `- URL de rastreamento: ${order.url_rastreamento}` : ''}
-${order.data_entrega ? `- Data prevista de entrega: ${order.data_entrega}` : ''}
-
-💳 Informações Financeiras:
-- Valor total dos produtos: R$ ${order.total_produtos}
-- Valor total do pedido: R$ ${order.total_pedido}
-${order.valor_desconto ? `- Desconto aplicado: R$ ${order.valor_desconto}` : ''}
-
-📝 Nota Fiscal:
-${order.numero_nota ? `- Número: ${order.numero_nota}` : '- Ainda não emitida'}
-${order.chave_acesso_nota ? `- Chave de acesso: ${order.chave_acesso_nota}` : ''}
-
-${order.obs_interna ? `💬 Observações internas:\n${order.obs_interna}` : ''}`;
-}
-
-// Função para extrair número de qualquer padrão
-function extractNumber(message: string): { value: string; type: string } | null {
-	// Padrões de identificação
-	const patterns = {
-		pedidoNumero: /(?:pedido|numero|pedido numero|número)[\s:]*(\d+)/i,
-		pedidoId: /(?:pedido id|id pedido|id)[\s:]*(\d+)/i,
-		notaFiscal: /(?:nota fiscal|nf|nfe)[\s:]*(\d+)/i,
-		ordemCompra: /(?:ordem|compra|ordem de compra|oc)[\s:]*(\d+)-(\d+)/i,
-		numeroComHifen: /^(\d+-\d+)$/
-	};
-
-	// Tenta cada padrão em ordem
-	for (const [key, pattern] of Object.entries(patterns)) {
-		const match = message.match(pattern);
-		if (match) {
-			// Para ordem de compra e número com hífen, junta os grupos capturados
-			if (key === 'ordemCompra') {
-				return {
-					value: `${match[1]}-${match[2]}`,
-					type: key
-				};
-			}
-			// Para número simples com hífen
-			if (key === 'numeroComHifen') {
-				return {
-					value: match[1],
-					type: 'ordemCompra'
-				};
-			}
-			return {
-				value: match[1],
-				type: key
-			};
-		}
-	}
-	return null;
-}
-
-export async function POST(req: Request) {
-	console.log('Iniciando processamento da requisição POST /api/chat');
-	
-	try {
-		// Verifica todas as variáveis de ambiente necessárias
-		try {
-			checkRequiredEnvVars();
-		} catch (error: any) {
-			console.error('Erro na verificação das variáveis de ambiente:', error);
+		if (!messages || !Array.isArray(messages)) {
 			return NextResponse.json(
-				{ message: '❌ Erro de configuração do servidor: ' + error.message },
-				{ status: 500 }
+				{ error: 'Mensagens inválidas' },
+				{ status: 400 }
 			);
 		}
 
-		const { messages } = await req.json();
-		const lastMessage = messages[messages.length - 1].content.toLowerCase();
-		console.log('Última mensagem recebida:', lastMessage);
+		const userMessage = messages[messages.length - 1];
+		if (!userMessage || !userMessage.content) {
+			return NextResponse.json(
+				{ error: 'Mensagem do usuário inválida' },
+				{ status: 400 }
+			);
+		}
 
-		// Extrai o número e tipo da mensagem
-		const extracted = extractNumber(lastMessage.trim());
+		// Verifica se é uma busca por pedido
+		const orderMatch = userMessage.content.match(/\d{6}/);
 		
-		// Se encontrou qualquer tipo de número, tenta buscar no BigQuery
-		if (extracted) {
-			const searchValue = extracted.value;
-			const searchType = extracted.type;
-			
-			console.log('Número extraído:', {
-				value: searchValue,
-				type: searchType,
-				originalMessage: lastMessage
-			});
+		// Se é uma pergunta relacionada a pedido
+		if (isOrderRelatedQuestion) {
+			// Se tem um novo número de pedido, busca no BigQuery
+			if (orderMatch) {
+				try {
+					const orderNumber = orderMatch[0];
+					const orderData = await bigQueryService.searchOrder(orderNumber);
 
-			try {
-				console.log('Iniciando busca no BigQuery com valor:', searchValue);
-
-				// Aguarda explicitamente a resposta do BigQuery
-				const results = await bigQueryService.searchOrder(searchValue);
-				console.log('Resultados do BigQuery:', {
-					found: !!results,
-					count: results?.length || 0
-				});
-
-				if (results && results.length > 0) {
-					// Initialize OpenAI client com validação
-					const openai = await initializeOpenAI();
-
-					// Formata os dados do pedido
-					const formattedOrderData = formatOrderData(results[0]);
-					console.log('Dados do pedido formatados com sucesso');
-
-					// Adiciona contexto sobre como o pedido foi encontrado
-					let searchContext = '';
-					switch (searchType) {
-						case 'pedidoNumero':
-							searchContext = `Encontrei o pedido pelo número ${searchValue}`;
-							break;
-						case 'pedidoId':
-							searchContext = `Encontrei o pedido pelo ID ${searchValue}`;
-							break;
-						case 'notaFiscal':
-							searchContext = `Encontrei o pedido pela nota fiscal ${searchValue}`;
-							break;
-						case 'ordemCompra':
-							searchContext = `Encontrei o pedido pela ordem de compra ${searchValue}`;
-							break;
-						default:
-							searchContext = `Encontrei o pedido usando o número ${searchValue}`;
+					if (!orderData || orderData.length === 0) {
+						return NextResponse.json({
+							message: `Desculpe, não encontrei nenhum pedido com o número ${orderNumber}. Por favor, verifique o número e tente novamente.`
+						});
 					}
 
-					const completion = await openai.chat.completions.create({
-						model: 'gpt-4-0125-preview',
-						messages: [
-							{
-								role: 'system',
-								content: systemPrompt + `\n\nIMPORTANTE: Você deve usar APENAS as informações fornecidas abaixo e manter o formato com os ícones conforme especificado acima. NUNCA invente ou suponha informações que não estejam presentes nos dados.\n\nContexto da busca: ${searchContext}\n\n${formattedOrderData}`,
-							},
-							...messages,
-						],
-						temperature: 0.3,
-						max_tokens: 1000,
+					const order = orderData[0];
+					const formattedResponse = formatOrderResponse(order);
+					
+					// Retorna tanto a mensagem formatada quanto os dados brutos
+					return NextResponse.json({ 
+						message: formattedResponse,
+						orderData: order // Dados brutos para armazenar no frontend
 					});
-
-					console.log('Resposta do OpenAI gerada com sucesso');
-
+				} catch (error) {
+					console.error('Erro ao buscar pedido:', error);
 					return NextResponse.json({
-						message: completion.choices[0].message.content,
-					});
-				} else {
-					console.log('Nenhum resultado encontrado no BigQuery');
-					return NextResponse.json({
-						message: `❌ Não encontrei nenhum pedido com o número ${searchValue}.\n` +
-							'⚠️ Por favor, verifique se o número está correto e tente novamente.\n\n' +
-							'🔍 Você pode buscar usando qualquer um destes formatos:\n' +
-							'• Número do pedido (exemplo: "pedido numero: 123456")\n' +
-							'• ID do pedido (exemplo: "pedido id: 123456")\n' +
-							'• Nota fiscal (exemplo: "nota fiscal: 123456")\n' +
-							'• Ordem de compra (exemplo: "ordem: 123456-01")\n' +
-							'• Ou simplesmente digite o número'
+						message: 'Desculpe, ocorreu um erro ao buscar as informações do pedido. Por favor, tente novamente.'
 					});
 				}
-			} catch (error: any) {
-				console.error('Erro detalhado na busca do pedido:', error);
-
-				// Erro específico para problemas com OpenAI
-				if (error.message?.includes('OpenAI')) {
-					console.error('Erro específico do OpenAI:', error);
-					return NextResponse.json({
-						message: '❌ Erro ao processar a resposta. Por favor, contate o administrador do sistema.'
-					});
-				}
-
-				// Erro específico para problemas de autenticação do BigQuery
-				if (error.message?.includes('credentials') || error.message?.includes('authentication')) {
-					console.error('Erro de autenticação do BigQuery:', error);
-					return NextResponse.json(
-						{ message: '❌ Erro de autenticação ao acessar os dados. Por favor, contate o administrador do sistema.' },
-						{ status: 401 }
-					);
-				}
-
-				// Erro de timeout
-				if (error.message?.includes('timeout')) {
-					console.error('Erro de timeout na busca:', error);
-					return NextResponse.json({
-						message: '⚠️ A busca está demorando mais que o esperado. Por favor, tente novamente em alguns instantes.'
-					});
-				}
-
-				// Erro genérico com mais detalhes
-				return NextResponse.json({
-					message: '❌ Ocorreu um erro ao buscar as informações do pedido. Detalhes técnicos foram registrados para análise.'
-				});
 			}
-		} else {
-			console.log('Mensagem não contém número de pedido, processando com OpenAI');
-			try {
-				// Initialize OpenAI client com validação
-				const openai = await initializeOpenAI();
-
-				const completion = await openai.chat.completions.create({
-					model: 'gpt-4-0125-preview',
-					messages: [
-						{
-							role: 'system',
-							content: systemPrompt + '\n\nIMPORTANTE: Você deve responder APENAS com base nas informações que você tem certeza. NUNCA invente ou suponha informações sobre pedidos. Se o usuário perguntar sobre um pedido específico, peça o número do pedido.',
-						},
-						...messages,
-					],
-					temperature: 0.3,
-					max_tokens: 1000,
-				});
-
-				console.log('Resposta do OpenAI gerada com sucesso para mensagem sem número de pedido');
-
+			// Se não tem número novo mas tem dados do pedido atual
+			else if (currentOrderData) {
+				try {
+					// Analisa a pergunta e responde usando os dados existentes
+					const response = analyzeOrderQuestion(userMessage.content, currentOrderData);
+					return NextResponse.json({ 
+						message: response,
+						orderData: currentOrderData // Mantém os dados do pedido no contexto
+					});
+				} catch (error) {
+					console.error('Erro ao analisar pergunta:', error);
+					return NextResponse.json({
+						message: 'Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.'
+					});
+				}
+			}
+			// Se não tem número novo nem dados atuais
+			else {
 				return NextResponse.json({
-					message: completion.choices[0].message.content,
-				});
-			} catch (error: any) {
-				console.error('Erro ao processar mensagem com OpenAI:', error);
-				return NextResponse.json({
-					message: '❌ Erro ao processar sua mensagem. Por favor, tente novamente em alguns instantes.'
+					message: 'Por favor, me forneça o número do pedido que você deseja consultar (6 dígitos).'
 				});
 			}
 		}
-	} catch (error: any) {
-		console.error('Erro não tratado na rota /api/chat:', error);
-		
-		// Verifica se é um erro de timeout
-		if (error.message?.includes('timeout')) {
-			return NextResponse.json({
-				message: '⚠️ A operação demorou muito para responder. Por favor, tente novamente em alguns instantes.'
-			});
-		}
 
-		// Erro genérico com logging aprimorado
+		// Se não for uma pergunta relacionada a pedido
 		return NextResponse.json({
-			message: '❌ Desculpe, ocorreu um erro inesperado. Nossa equipe técnica foi notificada e está investigando o problema.'
+			message: 'Como posso ajudar você? Posso buscar informações sobre pedidos, verificar status de entregas, consultar notas fiscais ou analisar dados de transportadoras.'
 		});
+
+	} catch (error) {
+		console.error('Erro na rota de chat:', error);
+		return NextResponse.json(
+			{ error: 'Erro interno do servidor' },
+			{ status: 500 }
+		);
+	}
+}
+
+function analyzeOrderQuestion(question: string, orderData: any): string {
+	// Converte a pergunta para minúsculas para facilitar a comparação
+	const q = question.toLowerCase();
+
+	try {
+		// Analisa datas
+		if (q.includes('dias entre') || q.includes('intervalo')) {
+			if (q.includes('faturamento') && q.includes('expedição')) {
+				const dataFaturamento = orderData.data_faturamento_status ? new Date(orderData.data_faturamento_status) : null;
+				const dataExpedicao = orderData.data_expedicao_status ? new Date(orderData.data_expedicao_status) : null;
+
+				if (dataFaturamento && dataExpedicao) {
+					const diffTime = Math.abs(dataExpedicao.getTime() - dataFaturamento.getTime());
+					const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+					return `O intervalo entre o faturamento (${dataFaturamento.toLocaleDateString('pt-BR')}) e a expedição (${dataExpedicao.toLocaleDateString('pt-BR')}) é de ${diffDays} dia(s).`;
+				}
+				return 'Não foi possível calcular o intervalo pois uma ou ambas as datas não estão disponíveis.';
+			}
+		}
+
+		// Analisa status
+		if (q.includes('status') || q.includes('situação')) {
+			if (q.includes('envio') || q.includes('entrega')) {
+				const status = orderData.situacao_pedido || 'Em processamento';
+				return `O status atual do envio é: ${status}`;
+			}
+			return `O status atual do pedido é: ${orderData.situacao_pedido || 'Em processamento'}`;
+		}
+
+		// Analisa rastreamento
+		if (q.includes('rastreamento') || q.includes('rastrear')) {
+			const codigoRastreamento = orderData.codigo_rastreamento_etiqueta || 
+				(orderData.transportador_json_status ? JSON.parse(orderData.transportador_json_status).codigoRastreamento : null);
+			
+			if (codigoRastreamento) {
+				return `O código de rastreamento do pedido é: ${codigoRastreamento}`;
+			}
+			return 'O código de rastreamento ainda não está disponível.';
+		}
+
+		// Se não identificou uma pergunta específica, retorna os dados completos
+		return formatOrderResponse(orderData);
+	} catch (error) {
+		console.error('Erro ao analisar pergunta específica:', error);
+		return formatOrderResponse(orderData);
+	}
+}
+
+function formatOrderResponse(order: any) {
+	try {
+		// Parse JSON strings with error handling
+		const customer = order.cliente_json ? JSON.parse(order.cliente_json) : {};
+		const items = order.itens_pedido ? JSON.parse(order.itens_pedido) : [];
+		const shipping = order.transportador_json_status ? JSON.parse(order.transportador_json_status) : {};
+		const formaEnvio = order.forma_envio_status ? JSON.parse(order.forma_envio_status) : {};
+
+		// Format dates
+		const dataPedido = order.data_pedido ? new Date(order.data_pedido).toLocaleDateString('pt-BR') : 'Não informada';
+		const dataFaturamento = order.data_faturamento_status ? new Date(order.data_faturamento_status).toLocaleDateString('pt-BR') : 'Não informada';
+		const dataExpedicao = order.data_expedicao_status ? new Date(order.data_expedicao_status).toLocaleDateString('pt-BR') : 'Não informada';
+
+		// Format currency values
+		const totalPedido = order.total_pedido ? parseFloat(order.total_pedido).toLocaleString('pt-BR', {
+			style: 'currency',
+			currency: 'BRL'
+		}) : 'R$ 0,00';
+		const valorDesconto = order.valor_desconto ? parseFloat(order.valor_desconto).toLocaleString('pt-BR', {
+			style: 'currency',
+			currency: 'BRL'
+		}) : 'R$ 0,00';
+		const valorNota = order.valor_nota ? parseFloat(order.valor_nota).toLocaleString('pt-BR', {
+			style: 'currency',
+			currency: 'BRL'
+		}) : 'R$ 0,00';
+
+		// Format items
+		const formattedItems = items.map((itemWrapper: any) => {
+			const item = itemWrapper.item;
+			return `${item.quantidade}x ${item.descricao} - ${parseFloat(item.valor_unitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+		}).join('\n');
+
+		// Build response message
+		return `📦 Pedido #${order.numero_pedido}
+
+📝 Informações da Nota Fiscal:
+• Número: ${order.numero_nota || 'Não emitida'}
+• Chave: ${order.chave_acesso_nota || 'Não disponível'}
+• Valor: ${valorNota}
+
+👤 Informações do Cliente:
+• Nome: ${customer.nome || 'Não informado'}
+• CPF/CNPJ: ${customer.cpf_cnpj || 'Não informado'}
+• Email: ${customer.email || 'Não informado'}
+• Telefone: ${customer.fone || 'Não informado'}
+
+📍 Endereço de Entrega:
+• ${customer.endereco}, ${customer.numero}${customer.complemento ? ` - ${customer.complemento}` : ''}
+• ${customer.bairro}
+• ${customer.cidade}/${customer.uf}
+• CEP: ${customer.cep}
+
+💰 Informações do Pedido:
+• Data do Pedido: ${dataPedido}
+• Total dos Produtos: ${totalPedido}
+• Desconto Aplicado: ${valorDesconto}
+• Status: ${order.situacao_pedido || 'Em processamento'}
+
+🚚 Informações de Envio:
+• Transportadora: ${shipping.nome || order.nome_transportador || 'Não definida'}
+• Forma de Envio: ${formaEnvio.nome || shipping.formaEnvio?.nome || 'Não informada'}
+• Tipo de Frete: ${order.forma_frete || 'Não informado'}
+• Frete por Conta: ${order.frete_por_conta === 'R' ? 'Remetente' : 'Destinatário'}
+• Código de Rastreamento: ${order.codigo_rastreamento_etiqueta || shipping.codigoRastreamento || 'Não disponível'}
+• URL de Rastreamento: ${order.url_rastreamento_etiqueta || shipping.urlRastreamento || 'Não disponível'}
+
+📅 Datas Importantes:
+• Faturamento: ${dataFaturamento}
+• Expedição: ${dataExpedicao}
+• Previsão de Entrega: ${order.data_prevista ? new Date(order.data_prevista).toLocaleDateString('pt-BR') : 'Não informada'}
+
+📦 Itens do Pedido:
+${formattedItems || 'Nenhum item encontrado'}
+
+💬 Observações: ${order.obs_interna || 'Nenhuma observação'}`;
+	} catch (err: unknown) {
+		console.error('Erro ao formatar resposta:', err);
+		const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+		return `Desculpe, ocorreu um erro ao formatar as informações do pedido. Por favor, tente novamente.
+Detalhes do erro: ${errorMessage}`;
 	}
 } 

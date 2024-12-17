@@ -15,6 +15,7 @@ import {
 	Info,
 	Calendar,
 	Building2,
+	ExternalLink,
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Separator } from '@/components/ui/separator';
@@ -287,6 +288,7 @@ function ResultsContent() {
 				);
 				const data = await response.json();
 				console.log('Resposta da API:', data);
+				console.log('Número da ordem de compra:', data.results[0]?.numero_ordem_compra);
 
 				if (!response.ok) {
 					console.error('Erro na API:', data);
@@ -304,14 +306,15 @@ function ResultsContent() {
 				}
 
 				setResult(data.results[0]);
+				console.log('Número ordem de compra:', data.results[0].numero_ordem_compra);
 			} catch (err) {
 				console.error('Erro ao buscar:', err);
 				setError('Pedido não encontrado');
 				toast({
 					title: 'Erro na busca',
-					description:
-						err instanceof Error ? err.message : 'Erro ao buscar pedido',
-					variant: 'destructive',
+						description:
+							err instanceof Error ? err.message : 'Erro ao buscar pedido',
+						variant: 'destructive',
 				});
 			} finally {
 				setIsLoading(false);
@@ -388,10 +391,12 @@ function ResultsContent() {
 							label="Número Ordem Compra"
 							value={result.numero_ordem_compra}
 							isVtexOrder={true}
+							link={`https://tfcucl.myvtex.com/admin/orders/${result.numero_ordem_compra}`}
 						/>
 						<InfoItem
 							label="Total Produtos"
 							value={formatCurrency(result.total_produtos)}
+							isVtexOrder={true}
 						/>
 						<InfoItem
 							label="Total Pedido"
@@ -406,10 +411,6 @@ function ResultsContent() {
 							label="Frete por Conta"
 							value={result.frete_por_conta}
 							isShipping={true}
-						/>
-						<InfoItem
-							label="Código Rastreamento"
-							value={result.codigo_rastreamento}
 						/>
 						<InfoItem
 							label="Nome Transportador"
@@ -603,23 +604,28 @@ function ResultsContent() {
 								</div>
 							</div>
 
-							{transportador.codigoRastreamento && (
+							{/* Rastreamento */}
+							{(result.url_rastreamento || result.codigo_rastreamento) && (
 								<div className="pt-4 border-t">
-									<p className="text-sm text-muted-foreground">
-										Código de Rastreamento
-									</p>
-									<p className="font-medium">
-										{transportador.codigoRastreamento}
-									</p>
-									{transportador.urlRastreamento && (
+									{result.codigo_rastreamento && (
+										<div className="mb-2">
+											<p className="text-sm text-muted-foreground">
+												Código de Rastreamento
+											</p>
+											<p className="font-medium">
+												{result.codigo_rastreamento}
+											</p>
+										</div>
+									)}
+									{result.url_rastreamento && (
 										<Button
 											variant="outline"
-											className="mt-2"
-											onClick={() =>
-												window.open(transportador.urlRastreamento, '_blank')
-											}
+											size="sm"
+											className="gap-2"
+											onClick={() => window.open(result.url_rastreamento, '_blank')}
 										>
 											Rastrear Pedido
+											<ExternalLink className="h-4 w-4" />
 										</Button>
 									)}
 								</div>
