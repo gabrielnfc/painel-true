@@ -26,6 +26,14 @@ function checkRequiredEnvVars() {
 	if (missing.length > 0) {
 		throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 	}
+
+	// Log environment variables status (without exposing sensitive data)
+	console.log('Environment variables check:', {
+		OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+		GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID,
+		GOOGLE_CLOUD_CLIENT_EMAIL: !!process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+		GOOGLE_CLOUD_PRIVATE_KEY: !!process.env.GOOGLE_CLOUD_PRIVATE_KEY,
+	});
 }
 
 // Função auxiliar para formatar os dados do pedido
@@ -59,7 +67,7 @@ function formatOrderData(order: any) {
 	try {
 		clienteInfo = JSON.parse(order.cliente_json || '{}') as ClienteInfo;
 	} catch (e) {
-		// Ignora erro de parse
+		console.error('Erro ao fazer parse do cliente_json:', e);
 	}
 
 	return `
@@ -95,11 +103,14 @@ ${order.obs_interna ? `💬 Observações internas:\n${order.obs_interna}` : ''}
 }
 
 export async function POST(req: Request) {
+	console.log('Iniciando processamento da requisição POST /api/chat');
+	
 	try {
 		// Verifica todas as variáveis de ambiente necessárias
 		try {
 			checkRequiredEnvVars();
 		} catch (error: any) {
+			console.error('Erro na verificação das variáveis de ambiente:', error);
 			return NextResponse.json(
 				{ error: 'Erro de configuração do servidor. Por favor, contate o administrador.' },
 				{ status: 500 }
@@ -108,6 +119,7 @@ export async function POST(req: Request) {
 
 		const { messages } = await req.json();
 		const lastMessage = messages[messages.length - 1].content;
+		console.log('Última mensagem recebida:', lastMessage);
 		
 		// Primeiro tenta encontrar um número com hífen (para numero_ordem_compra)
 		let orderMatch = lastMessage.match(/\b\d+(?:-\d+)?\b/);
@@ -123,6 +135,11 @@ export async function POST(req: Request) {
 				lastMessage.includes('-');
 		}
 
+		console.log('Resultado da análise da mensagem:', {
+			orderMatch: orderMatch?.[0],
+			isOrderNumberSearch
+		});
+
 		// Se a mensagem contém um número que parece ser um pedido
 		if (orderMatch) {
 			try {
@@ -131,8 +148,14 @@ export async function POST(req: Request) {
 					? orderMatch[0] 
 					: orderMatch[0].replace(/-/g, '');
 				
+				console.log('Iniciando busca no BigQuery com valor:', searchValue);
+
 				// Aguarda explicitamente a resposta do BigQuery
 				const results = await bigQueryService.searchOrder(searchValue);
+				console.log('Resultados do BigQuery:', {
+					found: !!results,
+					count: results?.length || 0
+				});
 
 				if (results && results.length > 0) {
 					// Initialize OpenAI client
@@ -142,6 +165,7 @@ export async function POST(req: Request) {
 
 					// Formata os dados do pedido
 					const formattedOrderData = formatOrderData(results[0]);
+					console.log('Dados do pedido formatados com sucesso');
 
 					const completion = await openai.chat.completions.create({
 						model: 'gpt-4',
@@ -156,10 +180,13 @@ export async function POST(req: Request) {
 						max_tokens: 1000,
 					});
 
+					console.log('Resposta do OpenAI gerada com sucesso');
+
 					return NextResponse.json({
 						message: completion.choices[0].message.content,
 					});
 				} else {
+					console.log('Nenhum resultado encontrado no BigQuery');
 					return NextResponse.json({
 						message: `❌ Não encontrei nenhum pedido com o número fornecido: ${searchValue}.\n` +
 							'⚠️ O número foi informado corretamente? Por favor, verifique e me envie novamente.\n\n' +
@@ -171,20 +198,32 @@ export async function POST(req: Request) {
 					});
 				}
 			} catch (error: any) {
+				console.error('Erro detalhado na busca do pedido:', error);
+
 				// Erro específico para problemas de autenticação do BigQuery
 				if (error.message?.includes('credentials') || error.message?.includes('authentication')) {
+					console.error('Erro de autenticação do BigQuery:', error);
 					return NextResponse.json(
-						{ error: 'Erro de autenticação ao acessar os dados. Por favor, contate o administrador.' },
+						{ message: '❌ Erro de autenticação ao acessar os dados. Por favor, contate o administrador do sistema.' },
 						{ status: 401 }
 					);
 				}
 
-				return NextResponse.json(
-					{ error: 'Erro ao buscar informações do pedido. Por favor, tente novamente em alguns instantes.' },
-					{ status: 500 }
-				);
+				// Erro de timeout
+				if (error.message?.includes('timeout')) {
+					console.error('Erro de timeout na busca:', error);
+					return NextResponse.json({
+						message: '⚠️ A busca está demorando mais que o esperado. Por favor, tente novamente em alguns instantes.'
+					});
+				}
+
+				// Erro genérico com mais detalhes
+				return NextResponse.json({
+					message: '❌ Ocorreu um erro ao buscar as informações do pedido. Detalhes técnicos foram registrados para análise.'
+				});
 			}
 		} else {
+			console.log('Mensagem não contém número de pedido, processando com OpenAI');
 			// Initialize OpenAI client
 			const openai = new OpenAI({
 				apiKey: process.env.OPENAI_API_KEY,
@@ -203,23 +242,25 @@ export async function POST(req: Request) {
 				max_tokens: 1000,
 			});
 
+			console.log('Resposta do OpenAI gerada com sucesso para mensagem sem número de pedido');
+
 			return NextResponse.json({
 				message: completion.choices[0].message.content,
 			});
 		}
 	} catch (error: any) {
+		console.error('Erro não tratado na rota /api/chat:', error);
+		
 		// Verifica se é um erro de timeout
 		if (error.message?.includes('timeout')) {
-			return NextResponse.json(
-				{ error: 'A operação demorou muito para responder. Por favor, tente novamente em alguns instantes.' },
-				{ status: 504 }
-			);
+			return NextResponse.json({
+				message: '⚠️ A operação demorou muito para responder. Por favor, tente novamente em alguns instantes.'
+			});
 		}
 
-		// Erro genérico
-		return NextResponse.json(
-			{ error: 'Erro ao processar a mensagem. Por favor, tente novamente.' },
-			{ status: 500 }
-		);
+		// Erro genérico com logging aprimorado
+		return NextResponse.json({
+			message: '❌ Desculpe, ocorreu um erro inesperado. Nossa equipe técnica foi notificada e está investigando o problema.'
+		});
 	}
 } 

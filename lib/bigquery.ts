@@ -65,6 +65,8 @@ export class BigQueryService {
   private readonly queryTimeout = 30000; // 30 segundos de timeout
 
   constructor(config?: BigQueryConfig) {
+    console.log('Inicializando BigQueryService');
+    
     const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
     const credentials = config?.credentials || {
       client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
@@ -72,13 +74,27 @@ export class BigQueryService {
     };
 
     if (!projectId || !credentials.client_email || !credentials.private_key) {
+      console.error('Erro de configuração do BigQuery:', {
+        hasProjectId: !!projectId,
+        hasClientEmail: !!credentials.client_email,
+        hasPrivateKey: !!credentials.private_key,
+      });
       throw new Error('Missing required BigQuery credentials');
     }
 
-    this.bigquery = new BigQuery({
-      projectId,
-      credentials,
-    });
+    try {
+      this.bigquery = new BigQuery({
+        projectId,
+        credentials,
+      });
+      console.log('BigQuery inicializado com sucesso:', {
+        projectId,
+        hasCredentials: !!credentials,
+      });
+    } catch (error) {
+      console.error('Erro ao inicializar BigQuery:', error);
+      throw new Error('Failed to initialize BigQuery client');
+    }
   }
 
   async searchOrder(
@@ -189,16 +205,27 @@ export class BigQueryService {
         }, this.queryTimeout);
       });
 
+      console.log('Executando query no BigQuery...');
       const queryPromise = this.bigquery.query(queryOptions);
       const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
 
-      console.log('Resultados encontrados:', rows?.length || 0);
+      console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
       return rows as OrderSearchResult[];
     } catch (error) {
       console.error('Erro detalhado no BigQuery:', error);
-      if (error instanceof Error && error.message === 'BigQuery query timeout') {
-        throw new Error('A consulta ao BigQuery excedeu o tempo limite');
+      
+      // Verifica se é um erro de autenticação
+      if (error instanceof Error) {
+        if (error.message.includes('Could not load the default credentials')) {
+          console.error('Erro de autenticação do BigQuery:', error);
+          throw new Error('BigQuery authentication failed');
+        }
+        if (error.message.includes('timeout')) {
+          console.error('Timeout na query do BigQuery:', error);
+          throw new Error('BigQuery query timeout');
+        }
       }
+      
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
@@ -280,17 +307,19 @@ export class BigQueryService {
         startDate,
         endDate,
       },
+      timeout: this.queryTimeout,
     };
 
-    console.log('Query do BigQuery:', query);
+    console.log('Query do relatório:', query);
     console.log('Parâmetros da query:', queryOptions.params);
 
     try {
+      console.log('Executando query de relatório...');
       const [rows] = await this.bigquery.query(queryOptions);
-      console.log('Resultados encontrados:', rows?.length || 0);
+      console.log('Query de relatório executada com sucesso. Resultados:', rows?.length || 0);
       return rows as OrderSearchResult[];
     } catch (error) {
-      console.error('Erro no BigQuery:', error);
+      console.error('Erro no relatório do BigQuery:', error);
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
