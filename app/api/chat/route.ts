@@ -27,13 +27,59 @@ function checkRequiredEnvVars() {
 		throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 	}
 
+	// Validação específica para a API key do OpenAI
+	if (!process.env.OPENAI_API_KEY?.startsWith('sk-')) {
+		throw new Error('Invalid OpenAI API key format');
+	}
+
 	// Log environment variables status (without exposing sensitive data)
 	console.log('Environment variables check:', {
-		OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+		OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'Presente e no formato correto' : 'Ausente ou formato inválido',
 		GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID,
 		GOOGLE_CLOUD_CLIENT_EMAIL: !!process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
 		GOOGLE_CLOUD_PRIVATE_KEY: !!process.env.GOOGLE_CLOUD_PRIVATE_KEY,
 	});
+}
+
+// Função para inicializar o cliente OpenAI com validação
+async function initializeOpenAI() {
+	if (!process.env.OPENAI_API_KEY) {
+		throw new Error('OpenAI API key is missing');
+	}
+
+	try {
+		const openai = new OpenAI({
+			apiKey: process.env.OPENAI_API_KEY,
+		});
+
+		// Teste de conexão simples com GPT-4 Turbo
+		await openai.chat.completions.create({
+			model: 'gpt-4-0125-preview',
+			messages: [{ role: 'system', content: 'Test connection' }],
+			max_tokens: 5,
+		});
+
+		console.log('Conexão com OpenAI testada com sucesso');
+		return openai;
+	} catch (error: any) {
+		console.error('Erro ao inicializar OpenAI:', {
+			error: error.message,
+			status: error.response?.status,
+			data: error.response?.data
+		});
+		
+		if (error.response?.status === 401) {
+			throw new Error('OpenAI API key inválida');
+		} else if (error.response?.status === 429) {
+			throw new Error('Limite de requisições OpenAI excedido');
+		} else if (error.response?.status === 500) {
+			throw new Error('Erro interno do servidor OpenAI');
+		} else if (error.message?.includes('model')) {
+			console.error('Erro com o modelo GPT-4:', error);
+			throw new Error('Modelo GPT-4 não disponível para esta API key');
+		}
+		throw error;
+	}
 }
 
 // Função auxiliar para formatar os dados do pedido
@@ -112,7 +158,7 @@ export async function POST(req: Request) {
 		} catch (error: any) {
 			console.error('Erro na verificação das variáveis de ambiente:', error);
 			return NextResponse.json(
-				{ error: 'Erro de configuração do servidor. Por favor, contate o administrador.' },
+				{ message: '❌ Erro de configuração do servidor: ' + error.message },
 				{ status: 500 }
 			);
 		}
@@ -158,17 +204,15 @@ export async function POST(req: Request) {
 				});
 
 				if (results && results.length > 0) {
-					// Initialize OpenAI client
-					const openai = new OpenAI({
-						apiKey: process.env.OPENAI_API_KEY,
-					});
+					// Initialize OpenAI client com validação
+					const openai = await initializeOpenAI();
 
 					// Formata os dados do pedido
 					const formattedOrderData = formatOrderData(results[0]);
 					console.log('Dados do pedido formatados com sucesso');
 
 					const completion = await openai.chat.completions.create({
-						model: 'gpt-4',
+						model: 'gpt-4-0125-preview',
 						messages: [
 							{
 								role: 'system',
@@ -200,6 +244,14 @@ export async function POST(req: Request) {
 			} catch (error: any) {
 				console.error('Erro detalhado na busca do pedido:', error);
 
+				// Erro específico para problemas com OpenAI
+				if (error.message?.includes('OpenAI')) {
+					console.error('Erro específico do OpenAI:', error);
+					return NextResponse.json({
+						message: '❌ Erro ao processar a resposta. Por favor, contate o administrador do sistema.'
+					});
+				}
+
 				// Erro específico para problemas de autenticação do BigQuery
 				if (error.message?.includes('credentials') || error.message?.includes('authentication')) {
 					console.error('Erro de autenticação do BigQuery:', error);
@@ -224,29 +276,34 @@ export async function POST(req: Request) {
 			}
 		} else {
 			console.log('Mensagem não contém número de pedido, processando com OpenAI');
-			// Initialize OpenAI client
-			const openai = new OpenAI({
-				apiKey: process.env.OPENAI_API_KEY,
-			});
+			try {
+				// Initialize OpenAI client com validação
+				const openai = await initializeOpenAI();
 
-			const completion = await openai.chat.completions.create({
-				model: 'gpt-4',
-				messages: [
-					{
-						role: 'system',
-						content: systemPrompt + '\n\nIMPORTANTE: Você deve responder APENAS com base nas informações que você tem certeza. NUNCA invente ou suponha informações sobre pedidos. Se o usuário perguntar sobre um pedido específico, peça o número do pedido.',
-					},
-					...messages,
-				],
-				temperature: 0.3,
-				max_tokens: 1000,
-			});
+				const completion = await openai.chat.completions.create({
+					model: 'gpt-4-0125-preview',
+					messages: [
+						{
+							role: 'system',
+							content: systemPrompt + '\n\nIMPORTANTE: Você deve responder APENAS com base nas informações que você tem certeza. NUNCA invente ou suponha informações sobre pedidos. Se o usuário perguntar sobre um pedido específico, peça o número do pedido.',
+						},
+						...messages,
+					],
+					temperature: 0.3,
+					max_tokens: 1000,
+				});
 
-			console.log('Resposta do OpenAI gerada com sucesso para mensagem sem número de pedido');
+				console.log('Resposta do OpenAI gerada com sucesso para mensagem sem número de pedido');
 
-			return NextResponse.json({
-				message: completion.choices[0].message.content,
-			});
+				return NextResponse.json({
+					message: completion.choices[0].message.content,
+				});
+			} catch (error: any) {
+				console.error('Erro ao processar mensagem com OpenAI:', error);
+				return NextResponse.json({
+					message: '❌ Erro ao processar sua mensagem. Por favor, tente novamente em alguns instantes.'
+				});
+			}
 		}
 	} catch (error: any) {
 		console.error('Erro não tratado na rota /api/chat:', error);
