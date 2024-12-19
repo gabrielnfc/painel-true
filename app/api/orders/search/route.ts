@@ -54,10 +54,28 @@ export async function GET(req: NextRequest) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+    if (!process.env.GOOGLE_CREDENTIALS) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
-        { error: 'BigQuery credentials not configured' },
+        { error: 'BigQuery credentials not configured. Please check environment variables.' },
+        { status: 500 }
+      );
+    }
+
+    // Verificar se as credenciais são um JSON válido
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        console.error('Credenciais do BigQuery inválidas ou incompletas');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery credentials format' },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao parsear credenciais do BigQuery:', error);
+      return NextResponse.json(
+        { error: 'Invalid BigQuery credentials JSON' },
         { status: 500 }
       );
     }
@@ -71,9 +89,16 @@ export async function GET(req: NextRequest) {
     console.error('Erro detalhado na busca de pedidos:', error);
     
     // Verificar se é um erro de credenciais
-    if (error instanceof Error && error.message.includes('credentials')) {
+    if (error instanceof Error) {
+      if (error.message.includes('credentials')) {
+        return NextResponse.json(
+          { error: 'BigQuery authentication failed. Please check credentials.' },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: 'BigQuery authentication failed' },
+        { error: error.message },
         { status: 500 }
       );
     }

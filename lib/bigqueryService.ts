@@ -11,29 +11,28 @@ export class BigQueryService {
     console.log('Inicializando BigQueryService');
     
     // Verificar se as credenciais estão disponíveis
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+    if (!process.env.GOOGLE_CREDENTIALS) {
       console.error('Credenciais do BigQuery não encontradas');
       throw new Error('BigQuery credentials not found');
     }
 
     try {
-      // Se GOOGLE_CREDENTIALS está disponível, usar como JSON
-      if (process.env.GOOGLE_CREDENTIALS) {
-        console.log('Usando credenciais do GOOGLE_CREDENTIALS');
-        const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-        this.bigquery = new BigQuery({
-          projectId: credentials.project_id,
-          credentials: {
-            client_email: credentials.client_email,
-            private_key: credentials.private_key,
-          },
-        });
-      } 
-      // Se não, usar o arquivo de credenciais
-      else {
-        console.log('Usando arquivo de credenciais do GOOGLE_APPLICATION_CREDENTIALS');
-        this.bigquery = new BigQuery();
+      // Parsear as credenciais do JSON
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      
+      // Verificar se todas as propriedades necessárias existem
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        throw new Error('Credenciais do BigQuery inválidas ou incompletas');
       }
+
+      // Inicializar o cliente do BigQuery com as credenciais
+      this.bigquery = new BigQuery({
+        projectId: credentials.project_id,
+        credentials: {
+          client_email: credentials.client_email,
+          private_key: credentials.private_key,
+        },
+      });
 
       console.log('BigQueryService inicializado com sucesso');
     } catch (error) {
