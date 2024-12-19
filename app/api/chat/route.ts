@@ -169,7 +169,7 @@ async function formatOrderResponse(order: any) {
 		}
 		
 		if (!Array.isArray(itens) || itens.length === 0) {
-			throw new Error('Itens do pedido não disponíveis');
+			throw new Error('Itens do pedido não dispon��veis');
 		}
 
 		// Processar e validar itens
@@ -257,9 +257,9 @@ async function formatOrderResponse(order: any) {
 
 		// Informações Financeiras
 		response += `💳 Informações Financeiras\n\n`;
-		response += `- Valor Total dos Produtos: R$ ${Number(order.total_produtos || 0).toFixed(2)}\n`;
-		response += `- Valor Total do Pedido: R$ ${Number(order.total_pedido || 0).toFixed(2)}\n`;
-		response += `- Desconto Aplicado: R$ ${Number(order.valor_desconto || 0).toFixed(2)}\n\n`;
+		response += `- Valor Total dos Produtos: R$ ${Number(order.total_produtos || 0).toFixed(2).replace('.', ',')}\n`;
+		response += `- Valor Total do Pedido: R$ ${Number(order.total_pedido || 0).toFixed(2).replace('.', ',')}\n`;
+		response += `- Desconto Aplicado: R$ ${Number(order.valor_desconto || 0).toFixed(2).replace('.', ',')}\n\n`;
 
 		// Nota Fiscal
 		response += `📝 Nota Fiscal\n\n`;
@@ -333,10 +333,10 @@ async function searchOrder(searchValue: string) {
 
 		const response = await fetch(`${baseUrl}/api/orders/search?q=${searchValue}`, {
 			method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`,
-				},
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${token}`,
+			},
 		});
 
 		console.log('Status da resposta:', response.status);
@@ -350,8 +350,15 @@ async function searchOrder(searchValue: string) {
 		console.log('Dados recebidos:', data);
 
 		if (!data.results || data.results.length === 0) {
+			console.log('Nenhum resultado encontrado');
 			return null;
 		}
+
+		console.log('Primeiro resultado:', {
+			id_pedido: data.results[0].id_pedido,
+			numero_pedido: data.results[0].numero_pedido,
+			situacao_pedido: data.results[0].situacao_pedido
+		});
 
 		return data.results[0];
 	} catch (error) {
@@ -448,57 +455,62 @@ export async function POST(req: Request) {
 		if (orderNumberMatch) {
 			try {
 				const orderNumber = orderNumberMatch[1];
+				console.log('Buscando pedido:', orderNumber);
+				
 				const order = await searchOrder(orderNumber);
+				console.log('Resultado da busca:', order);
 				
 				if (!order) {
-					return new Response(
-						JSON.stringify({ 
-							message: "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o n��mero está correto e tente novamente." 
-						})
-					);
+					const notFoundMessage = "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente.";
+					console.log('Pedido não encontrado:', notFoundMessage);
+					return new Response(JSON.stringify({ message: notFoundMessage }));
 				}
 
-				const { response, contextToSave } = await formatOrderResponse(order);
+				try {
+					const { response, contextToSave } = await formatOrderResponse(order);
+					console.log('Resposta formatada gerada com sucesso');
 
-				// Salvar o contexto no Supabase
-				if (sessionId) {
-					const supabase = createClient(
-						process.env.NEXT_PUBLIC_SUPABASE_URL!,
-						process.env.SUPABASE_SERVICE_KEY!
-					);
+					// Salvar o contexto no Supabase
+					if (sessionId) {
+						const supabase = createClient(
+							process.env.NEXT_PUBLIC_SUPABASE_URL!,
+							process.env.SUPABASE_SERVICE_KEY!
+						);
 
-					await supabase
-						.from('chat_messages')
-						.insert({
-							session_id: sessionId,
-							role: 'assistant',
-							content: response,
-							context: contextToSave,
-						});
+						await supabase
+							.from('chat_messages')
+							.insert({
+								session_id: sessionId,
+								role: 'assistant',
+								content: response,
+								context: contextToSave,
+							});
+						
+						console.log('Contexto salvo no Supabase');
+					}
+
+					console.log('Retornando resposta formatada');
+					return new Response(JSON.stringify({ message: response }));
+				} catch (formatError) {
+					console.error('Erro ao formatar resposta:', formatError);
+					throw formatError;
 				}
-
-				return new Response(JSON.stringify({ message: response }));
 			} catch (error) {
 				console.error('Error processing order search:', error);
-				return new Response(
-					JSON.stringify({ 
-						message: "Desculpe, ocorreu um erro ao buscar o pedido. Por favor, tente novamente." 
-					})
-				);
+				const errorMessage = "Desculpe, ocorreu um erro ao buscar o pedido. Por favor, tente novamente.";
+				return new Response(JSON.stringify({ message: errorMessage }));
 			}
 		}
 
 		// Se não for uma busca de pedido, retornar mensagem padrão
-		return new Response(
-			JSON.stringify({
-				message: "Olá! Sou a assistente virtual da True Source. Posso ajudar você a:\n\n" +
-						"• Buscar informações sobre pedidos\n" +
-						"• Verificar status de entregas\n" +
-						"• Consultar notas fiscais\n" +
-						"• Analisar dados de transportadoras\n\n" +
-						"Como posso ajudar você hoje?"
-			})
-		);
+		const welcomeMessage = "Olá! Sou a assistente virtual da True Source. Posso ajudar você a:\n\n" +
+								"• Buscar informações sobre pedidos\n" +
+								"• Verificar status de entregas\n" +
+								"• Consultar notas fiscais\n" +
+								"• Analisar dados de transportadoras\n\n" +
+								"Como posso ajudar você hoje?";
+		
+		return new Response(JSON.stringify({ message: welcomeMessage }));
 	} catch (error) {
 		console.error('Error in chat route:', error);
 		return new Response(

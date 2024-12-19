@@ -396,7 +396,6 @@ function ResultsContent() {
 						<InfoItem
 							label="Total Produtos"
 							value={formatCurrency(result.total_produtos)}
-							isVtexOrder={true}
 						/>
 						<InfoItem
 							label="Total Pedido"
