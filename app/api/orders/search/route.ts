@@ -19,10 +19,14 @@ function isValidSearchValue(value: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  console.log('Recebida requisição GET para busca de pedidos');
+  
   try {
     const { userId } = auth();
+    console.log('User ID:', userId);
     
     if (!userId) {
+      console.log('Usuário não autenticado');
       return new NextResponse(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401 }
@@ -30,13 +34,16 @@ export async function GET(req: NextRequest) {
     }
 
     const searchValue = req.nextUrl.searchParams.get('q');
+    console.log('Valor de busca:', searchValue);
     
     if (!searchValue) {
+      console.log('Valor de busca não fornecido');
       return NextResponse.json({ error: 'Search value is required' }, { status: 400 });
     }
 
     // Validate search value format
     if (!isValidSearchValue(searchValue)) {
+      console.log('Formato de busca inválido:', searchValue);
       return NextResponse.json({ 
         error: 'Formato inválido. O valor deve ser um dos seguintes formatos:\n' +
               '- ID do Pedido: 9 dígitos\n' +
@@ -46,10 +53,31 @@ export async function GET(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Verificar se as credenciais do BigQuery estão disponíveis
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+      console.error('Credenciais do BigQuery não encontradas');
+      return NextResponse.json(
+        { error: 'BigQuery credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    console.log('Iniciando busca no BigQuery');
     const results = await bigQueryService.searchOrder(searchValue);
+    console.log('Resultados encontrados:', results?.length || 0);
+
     return NextResponse.json({ results });
   } catch (error) {
-    console.error('Error searching orders:', error);
+    console.error('Erro detalhado na busca de pedidos:', error);
+    
+    // Verificar se é um erro de credenciais
+    if (error instanceof Error && error.message.includes('credentials')) {
+      return NextResponse.json(
+        { error: 'BigQuery authentication failed' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to search orders' },
       { status: 500 }
@@ -58,10 +86,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: Request) {
+  console.log('Recebida requisição POST para busca de pedidos');
+  
   try {
     const { userId } = auth();
+    console.log('User ID:', userId);
     
     if (!userId) {
+      console.log('Usuário não autenticado');
       return new NextResponse(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401 }
@@ -69,13 +101,16 @@ export async function POST(req: Request) {
     }
 
     const { searchValue } = await req.json();
+    console.log('Valor de busca:', searchValue);
     
     if (!searchValue) {
+      console.log('Valor de busca não fornecido');
       return NextResponse.json({ error: 'Search value is required' }, { status: 400 });
     }
 
     // Validate search value format
     if (!isValidSearchValue(searchValue)) {
+      console.log('Formato de busca inválido:', searchValue);
       return NextResponse.json({ 
         error: 'Formato inválido. O valor deve ser um dos seguintes formatos:\n' +
               '- ID do Pedido: 9 dígitos\n' +
@@ -85,10 +120,31 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // Verificar se as credenciais do BigQuery estão disponíveis
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+      console.error('Credenciais do BigQuery não encontradas');
+      return NextResponse.json(
+        { error: 'BigQuery credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    console.log('Iniciando busca no BigQuery');
     const results = await bigQueryService.searchOrder(searchValue);
+    console.log('Resultados encontrados:', results?.length || 0);
+
     return NextResponse.json({ results });
   } catch (error) {
-    console.error('Error searching orders:', error);
+    console.error('Erro detalhado na busca de pedidos:', error);
+    
+    // Verificar se é um erro de credenciais
+    if (error instanceof Error && error.message.includes('credentials')) {
+      return NextResponse.json(
+        { error: 'BigQuery authentication failed' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to search orders' },
       { status: 500 }

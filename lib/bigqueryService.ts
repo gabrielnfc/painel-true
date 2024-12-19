@@ -1,40 +1,44 @@
 import { BigQuery } from '@google-cloud/bigquery';
-import { BigQueryConfig, SearchOptions, OrderSearchResult } from './bigquery';
+import { OrderSearchResult, SearchOptions } from '@/lib/types/order';
 
 export class BigQueryService {
-  private bigquery: BigQuery;
-  private readonly queryTimeout = 30000; // 30 segundos de timeout
+  private bigquery: BigQuery | null = null;
+  private readonly queryTimeout = 30000; // 30 segundos
 
-  constructor(config?: BigQueryConfig) {
+  private initializeBigQuery() {
+    if (this.bigquery) return;
+
     console.log('Inicializando BigQueryService');
     
-    const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
-    const credentials = config?.credentials || {
-      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    };
-
-    if (!projectId || !credentials.client_email || !credentials.private_key) {
-      console.error('Erro de configuração do BigQuery:', {
-        hasProjectId: !!projectId,
-        hasClientEmail: !!credentials.client_email,
-        hasPrivateKey: !!credentials.private_key,
-      });
-      throw new Error('Missing required BigQuery credentials');
+    // Verificar se as credenciais estão disponíveis
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+      console.error('Credenciais do BigQuery não encontradas');
+      throw new Error('BigQuery credentials not found');
     }
 
     try {
-      this.bigquery = new BigQuery({
-        projectId,
-        credentials,
-      });
-      console.log('BigQuery inicializado com sucesso:', {
-        projectId,
-        hasCredentials: !!credentials,
-      });
+      // Se GOOGLE_CREDENTIALS está disponível, usar como JSON
+      if (process.env.GOOGLE_CREDENTIALS) {
+        console.log('Usando credenciais do GOOGLE_CREDENTIALS');
+        const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+        this.bigquery = new BigQuery({
+          projectId: credentials.project_id,
+          credentials: {
+            client_email: credentials.client_email,
+            private_key: credentials.private_key,
+          },
+        });
+      } 
+      // Se não, usar o arquivo de credenciais
+      else {
+        console.log('Usando arquivo de credenciais do GOOGLE_APPLICATION_CREDENTIALS');
+        this.bigquery = new BigQuery();
+      }
+
+      console.log('BigQueryService inicializado com sucesso');
     } catch (error) {
-      console.error('Erro ao inicializar BigQuery:', error);
-      throw new Error('Failed to initialize BigQuery client');
+      console.error('Erro ao inicializar BigQueryService:', error);
+      throw new Error('Failed to initialize BigQuery service');
     }
   }
 
@@ -42,6 +46,13 @@ export class BigQueryService {
     searchValue: string,
     options: SearchOptions = {}
   ): Promise<OrderSearchResult[]> {
+    // Inicializar BigQuery apenas quando necessário
+    this.initializeBigQuery();
+    
+    if (!this.bigquery) {
+      throw new Error('BigQuery client not initialized');
+    }
+
     console.log('Iniciando busca no BigQuery:', { searchValue, options });
 
     const {
@@ -60,6 +71,8 @@ export class BigQueryService {
 
     const query = `
       SELECT 
+        pedidos.data_pedido AS data_pedido,
+        pedidos.data_entrega AS data_entrega,
         pedidos.id AS id_pedido,
         pedidos.numero AS numero_pedido,
         pedidos.id_nota_fiscal,
@@ -72,9 +85,7 @@ export class BigQueryService {
         pedidos.codigo_rastreamento,
         pedidos.nome_transportador,
         pedidos.forma_frete,
-        pedidos.data_pedido,
         pedidos.data_envio,
-        pedidos.data_entrega,
         pedidos.situacao AS situacao_pedido,
         pedidos.data_prevista,
         pedidos.url_rastreamento,
@@ -151,6 +162,11 @@ export class BigQueryService {
       const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
 
       console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
+      
+      if (rows?.length > 0) {
+        console.log('Primeiro resultado:', JSON.stringify(rows[0], null, 2));
+      }
+
       return rows as OrderSearchResult[];
     } catch (error) {
       console.error('Erro detalhado no BigQuery:', error);
@@ -172,8 +188,4 @@ export class BigQueryService {
   }
 }
 
-export const bigQueryService = new BigQueryService();
-
-export async function searchOrder(searchValue: string, options: SearchOptions = {}): Promise<OrderSearchResult[]> {
-  return bigQueryService.searchOrder(searchValue, options);
-} 
+export const bigQueryService = new BigQueryService(); 

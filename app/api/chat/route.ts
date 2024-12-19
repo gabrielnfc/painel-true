@@ -11,7 +11,7 @@ type ExtendedChatMessage = ChatCompletionMessageParam & {
 	session_id?: string;
 };
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 const openai = new OpenAI({
 	apiKey: process.env.OPENAI_API_KEY!
@@ -308,241 +308,141 @@ async function cleanupChatHistory(userId: string) {
 	}
 }
 
+// Função para buscar pedido
+async function searchOrder(searchValue: string) {
+	try {
+		// Construir a URL base
+		let baseUrl;
+		if (process.env.NEXT_PUBLIC_APP_URL) {
+			baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+		} else if (process.env.VERCEL_URL) {
+			baseUrl = `https://${process.env.VERCEL_URL}`;
+		} else {
+			baseUrl = 'http://localhost:3000';
+		}
+
+		// Remover qualquer barra no final da URL
+		baseUrl = baseUrl.replace(/\/$/, '');
+
+		console.log('Base URL:', baseUrl);
+		console.log('Buscando pedido:', searchValue);
+
+		// Obter o token de autenticação do Clerk
+		const { getToken } = auth();
+		const token = await getToken();
+
+		const response = await fetch(`${baseUrl}/api/orders/search?q=${searchValue}`, {
+			method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`,
+				},
+		});
+
+		console.log('Status da resposta:', response.status);
+
+		if (!response.ok) {
+			console.error('Erro na resposta:', response.statusText);
+			throw new Error(`Failed to fetch order: ${response.statusText}`);
+		}
+
+		const data = await response.json();
+		console.log('Dados recebidos:', data);
+
+		if (!data.results || data.results.length === 0) {
+			return null;
+		}
+
+		return data.results[0];
+	} catch (error) {
+		console.error('Error searching order:', error);
+		throw error;
+	}
+}
+
 export async function POST(req: Request) {
 	try {
-		// Verificar autenticação do usuário primeiro
-		const { userId: authUserId } = auth();
-		if (!authUserId) {
-			return new Response('Unauthorized', { status: 401 });
+		const { messages, sessionId, userId, isNewSession } = await req.json();
+
+		console.log('Recebida requisição com:', { sessionId, userId, isNewSession });
+
+		if (!messages || !Array.isArray(messages) || messages.length === 0) {
+			return new Response(
+				JSON.stringify({ error: 'Messages array is required' }),
+				{ status: 400 }
+			);
 		}
 
-		// Obter dados da requisição uma única vez
-		const { 
-			sessionId, 
-			userId: requestUserId, 
-			messages = [], 
-			content, 
-			isNewSession = false 
-		} = await req.json();
-
-		console.log('Recebida requisição com:', { 
-			sessionId, 
-			userId: requestUserId, 
-			isNewSession 
-		});
-
-		// Criar nova sessão se necessário
-		if (isNewSession) {
-			try {
-				await createChatSession(sessionId, authUserId);
-				console.log('Sessão criada com sucesso na API');
-			} catch (error) {
-				console.error('Erro ao criar sessão na API:', error);
-			}
+		const lastMessage = messages[messages.length - 1];
+		if (!lastMessage || !lastMessage.content) {
+			return new Response(
+				JSON.stringify({ error: 'Invalid message format' }),
+				{ status: 400 }
+			);
 		}
 
-		// Se não há mensagens ou é uma nova requisição, retornar mensagem de boas-vindas
-		if (!messages || messages.length === 0 || !content) {
-			const welcomeMessage = {
-				role: 'assistant',
-				content: 'Olá! 👋 Sou a assistente virtual da True Source.\n\n' +
-					'Estou aqui para ajudar você com informações sobre pedidos e responder suas dúvidas.\n\n' +
-					'Para realizar uma consulta, você pode me fornecer um dos seguintes dados:\n\n' +
-					'• ID do Pedido (9 dígitos)\n' +
-					'• Número do Pedido (6 dígitos)\n' +
-					'• ID da Nota Fiscal (9 dígitos)\n' +
-					'• Número da Ordem de Compra (13 dígitos + hífen + 2 dígitos)\n\n' +
-					'Como posso ajudar você hoje? 😊',
-				session_id: sessionId,
-				created_at: new Date().toISOString()
-			};
-
-			// Salvar mensagem de boas-vindas
-			const { error: messageError } = await supabase
-				.from('chat_messages')
-				.insert({
-					session_id: sessionId,
-					role: welcomeMessage.role,
-					content: welcomeMessage.content,
-					created_at: welcomeMessage.created_at
-				});
-
-			if (messageError) {
-				throw new Error('Failed to save welcome message');
-			}
-
-			return new Response(welcomeMessage.content, { status: 200 });
-		}
-
-		// Resto do código para processamento de mensagens...
-		// (manter o código existente para processamento de pedidos e chat)
-
-		// Adicionar a mensagem do usuário ao histórico
-		const userMessage = {
-			session_id: sessionId,
-			role: 'user' as const,
-			content: content,
-			created_at: new Date().toISOString()
-		};
-
-		await supabase
-			.from('chat_messages')
-			.insert(userMessage);
-
-		// Buscar histórico completo de mensagens da sessão
-		const { data: sessionMessages } = await supabase
-			.from('chat_messages')
-			.select('*')
-			.eq('session_id', sessionId)
-			.order('created_at', { ascending: true });
-
-		// Verificar se é uma consulta de pedido
-		const orderNumberMatch = content.match(/\d{6,}/);
+		// Verificar se a mensagem é uma busca de pedido
+		const orderNumberMatch = lastMessage.content.match(/pedido\s+(\d+)/i);
 		if (orderNumberMatch) {
 			try {
-				const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-				console.log('Fazendo requisição para:', `${appUrl}/api/orders/search`);
+				const orderNumber = orderNumberMatch[1];
+				const order = await searchOrder(orderNumber);
+				
+				if (!order) {
+					return new Response(
+						JSON.stringify({ 
+							message: "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente." 
+						})
+					);
+				}
 
-				// Fazer a requisição para a API de busca de pedidos
-				const orderResponse = await fetch(`${appUrl}/api/orders/search`, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'Authorization': req.headers.get('Authorization') || ''
-					},
-					body: JSON.stringify({ searchValue: orderNumberMatch[0] })
-				});
+				const { response, contextToSave } = await formatOrderResponse(order);
 
-				console.log('Status da resposta:', orderResponse.status);
+				// Salvar o contexto no Supabase
+				if (sessionId) {
+					const supabase = createClient(
+						process.env.NEXT_PUBLIC_SUPABASE_URL!,
+						process.env.SUPABASE_SERVICE_KEY!
+					);
 
-				if (!orderResponse.ok) {
-					const errorResponse = 'Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente.';
-					
-					// Salvar a mensagem de erro do assistente
 					await supabase
 						.from('chat_messages')
 						.insert({
 							session_id: sessionId,
 							role: 'assistant',
-							content: errorResponse,
-							created_at: new Date().toISOString()
+							content: response,
+							context: contextToSave,
 						});
-
-					return new Response(errorResponse);
 				}
 
-				const orderData = await orderResponse.json();
-				
-				if (!orderData.results || orderData.results.length === 0) {
-					const notFoundResponse = 'Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente.';
-					
-					// Salvar a mensagem de erro do assistente
-					await supabase
-						.from('chat_messages')
-						.insert({
-							session_id: sessionId,
-							role: 'assistant',
-							content: notFoundResponse,
-							created_at: new Date().toISOString()
-						});
-
-					return new Response(notFoundResponse);
-				}
-
-				// Formatar a resposta do pedido
-				const { response: formattedResponse, contextToSave } = await formatOrderResponse(orderData.results[0]);
-				
-				// Salvar a mensagem do assistente com todos os dados brutos do pedido
-				await supabase
-					.from('chat_messages')
-					.insert({
-						session_id: sessionId,
-						role: 'assistant',
-							content: formattedResponse,
-							created_at: new Date().toISOString(),
-							order_data: orderData.results[0] // Salvando todos os dados brutos do pedido
-					});
-
-				return new Response(formattedResponse);
+				return new Response(JSON.stringify({ message: response }));
 			} catch (error) {
-				console.error('Erro ao buscar pedido:', error);
-				const errorResponse = 'Desculpe, ocorreu um erro ao buscar as informações do pedido. Por favor, tente novamente mais tarde.';
-				
-				// Salvar a mensagem de erro do assistente
-				await supabase
-					.from('chat_messages')
-					.insert({
-						session_id: sessionId,
-						role: 'assistant',
-						content: errorResponse,
-						created_at: new Date().toISOString()
-					});
-
-				return new Response(errorResponse);
+				console.error('Error processing order search:', error);
+				return new Response(
+					JSON.stringify({ 
+						message: "Desculpe, ocorreu um erro ao buscar o pedido. Por favor, tente novamente." 
+					})
+				);
 			}
 		}
 
-		// Se não é uma nova consulta de pedido, processar a pergunta com o histórico completo
-		const threadContext = sessionMessages?.map(msg => ({
-			role: msg.role,
-			content: msg.content,
-			order_data: msg.order_data // Incluindo todos os dados do pedido em cada mensagem
-		}));
-
-		try {
-			// Responder com base no histórico completo
-			const completion = await openai.chat.completions.create({
-				model: 'gpt-4',
-				messages: [
-					{
-						role: 'system',
-						content: systemPrompt
-					},
-					...threadContext || [],
-					{
-						role: 'user',
-						content
-					}
-				],
-				temperature: 0.7,
-				stream: false // Mudando para false para receber a resposta completa
-			});
-
-			const assistantResponse = completion.choices[0]?.message?.content || 'Desculpe, não consegui processar sua pergunta.';
-
-			// Salvar a resposta do assistente
-			await supabase
-				.from('chat_messages')
-				.insert({
-					session_id: sessionId,
-					role: 'assistant',
-					content: assistantResponse,
-					created_at: new Date().toISOString(),
-					order_data: threadContext?.find(msg => msg.order_data)?.order_data // Mantendo os dados do pedido
-				});
-
-			return new Response(assistantResponse);
-		} catch (error) {
-			console.error('Erro ao processar resposta do OpenAI:', error);
-			const errorResponse = 'Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.';
-			
-			await supabase
-				.from('chat_messages')
-				.insert({
-					session_id: sessionId,
-					role: 'assistant',
-					content: errorResponse,
-					created_at: new Date().toISOString()
-				});
-
-			return new Response(errorResponse);
-		}
-
+		// Se não for uma busca de pedido, retornar mensagem padrão
+		return new Response(
+			JSON.stringify({
+				message: "Olá! Sou a assistente virtual da True Source. Posso ajudar você a:\n\n" +
+						"• Buscar informações sobre pedidos\n" +
+						"• Verificar status de entregas\n" +
+						"• Consultar notas fiscais\n" +
+						"• Analisar dados de transportadoras\n\n" +
+						"Como posso ajudar você hoje?"
+			})
+		);
 	} catch (error) {
-		console.error('Erro completo na rota de chat:', error);
-		return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
-			status: 500,
-		});
+		console.error('Error in chat route:', error);
+		return new Response(
+			JSON.stringify({ error: 'Internal server error' }),
+			{ status: 500 }
+		);
 	}
 }
 
