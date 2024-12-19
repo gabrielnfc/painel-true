@@ -18,3 +18,10 @@ export interface SearchParams {
   page?: number;
   pageSize?: number;
 }
+
+export interface SearchOptions {
+  sortKey?: string;
+  sortOrder?: 'asc' | 'desc';
+  pageSize?: number;
+  offset?: number;
+}

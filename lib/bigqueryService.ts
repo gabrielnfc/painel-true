@@ -6,6 +6,12 @@ export class BigQueryService {
   private readonly queryTimeout = 30000; // 30 segundos
 
   private initializeBigQuery() {
+    // Se estamos no processo de build, não inicialize o BigQuery
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando inicialização do BigQuery durante o build');
+      return;
+    }
+
     if (this.bigquery) return;
 
     console.log('Inicializando BigQueryService');
@@ -58,6 +64,12 @@ export class BigQueryService {
     searchValue: string,
     options: SearchOptions = {}
   ): Promise<OrderSearchResult[]> {
+    // Se estamos no processo de build, retorne um array vazio
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando busca no BigQuery durante o build');
+      return [];
+    }
+
     // Inicializar BigQuery apenas quando necessário
     this.initializeBigQuery();
     
