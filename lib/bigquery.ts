@@ -64,14 +64,17 @@ export class BigQueryService {
   private bigquery: BigQuery | null = null;
   private readonly queryTimeout = 30000; // 30 segundos de timeout
 
-  constructor(config?: BigQueryConfig) {
+  constructor() {
     // Não inicializa o BigQuery no construtor
     // A inicialização será feita sob demanda
   }
 
   private async initializeBigQuery() {
     // Se já está inicializado, retorna
-    if (this.bigquery) return;
+    if (this.bigquery) {
+      console.log('BigQuery já está inicializado');
+      return;
+    }
 
     // Se estamos no processo de build, não inicialize o BigQuery
     if (process.env.VERCEL_ENV === 'build') {
@@ -79,7 +82,7 @@ export class BigQueryService {
       return;
     }
 
-    console.log('Inicializando BigQueryService');
+    console.log('Iniciando inicialização do BigQueryService');
     
     try {
       // Verificar se as credenciais estão disponíveis
@@ -91,6 +94,7 @@ export class BigQueryService {
       let credentials;
       try {
         credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+        console.log('Credenciais do BigQuery parseadas com sucesso');
       } catch (parseError) {
         console.error('Erro ao parsear GOOGLE_CREDENTIALS:', parseError);
         throw new Error('Failed to parse BigQuery credentials');
@@ -109,19 +113,25 @@ export class BigQueryService {
         throw new Error('Credenciais do BigQuery incompletas. Verifique se project_id, client_email e private_key estão presentes.');
       }
 
+      // Verificar se a private_key está formatada corretamente
+      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
+        console.error('Private key do BigQuery mal formatada');
+        throw new Error('Invalid BigQuery private key format');
+      }
+
       // Inicializar o cliente do BigQuery com as credenciais
       this.bigquery = new BigQuery({
         projectId: credentials.project_id,
         credentials: {
           client_email: credentials.client_email,
-          private_key: credentials.private_key.replace(/\\n/g, '\n'),
+          private_key: credentials.private_key.replace(/\\n/g, '\n'), // Garantir que as quebras de linha estejam corretas
         },
       });
 
       console.log('BigQueryService inicializado com sucesso para o projeto:', credentials.project_id);
     } catch (error) {
       console.error('Erro ao inicializar BigQueryService:', error);
-      throw error;
+      throw error; // Propagar o erro original para melhor diagnóstico
     }
   }
 
@@ -251,6 +261,15 @@ export class BigQueryService {
       const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
 
       console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
+      
+      if (rows?.length > 0) {
+        console.log('Primeiro resultado:', {
+          id_pedido: rows[0].id_pedido,
+          numero_pedido: rows[0].numero_pedido,
+          situacao_pedido: rows[0].situacao_pedido
+        });
+      }
+
       return rows as OrderSearchResult[];
     } catch (error) {
       console.error('Erro detalhado no BigQuery:', error);
@@ -267,113 +286,6 @@ export class BigQueryService {
         }
       }
       
-      throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
-    }
-  }
-
-  async getOrdersReport(startDate: string, endDate: string): Promise<OrderSearchResult[]> {
-    // Se estamos no processo de build, retorne um array vazio
-    if (process.env.VERCEL_ENV === 'build') {
-      console.log('Pulando busca no BigQuery durante o build');
-      return [];
-    }
-
-    // Inicializar BigQuery sob demanda
-    await this.initializeBigQuery();
-    
-    if (!this.bigquery) {
-      throw new Error('BigQuery client not initialized');
-    }
-
-    console.log('Iniciando busca de relatório:', { startDate, endDate });
-
-    const query = `
-      SELECT 
-        pedidos.data_pedido AS data_pedido,
-        pedidos.data_entrega AS data_entrega,
-        pedidos.id AS id_pedido,
-        pedidos.numero AS numero_pedido,
-        pedidos.id_nota_fiscal,
-        pedidos.numero_ordem_compra,
-        pedidos.total_produtos,
-        pedidos.total_pedido,
-        pedidos.valor_desconto,
-        pedidos.deposito,
-        pedidos.frete_por_conta,
-        pedidos.codigo_rastreamento,
-        pedidos.nome_transportador AS transportadora,
-        pedidos.forma_frete,
-        pedidos.data_envio,
-        pedidos.situacao AS situacao_pedido,
-        pedidos.data_prevista,
-        pedidos.url_rastreamento,
-        pedidos.cliente AS cliente_json,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.nome') AS nome_cliente,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cpf_cnpj') AS cpf,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.fone') AS telefone,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.email') AS email,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.uf') AS uf,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cep') AS cep,
-        pedidos.itens AS produtos,
-        pedidos_status.dataPedido AS data_pedido_status,
-        pedidos_status.dataFaturamento AS data_faturamento_status,
-        pedidos_status.situacaoPedido AS situacao_pedido_status,
-        pedidos_status.nome AS nome_status,
-        pedidos_status.telefone AS telefone_status,
-        pedidos_status.email AS email_status,
-        pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
-        pedidos_status.statusTransportadora AS status_transportadora_status,
-        pedidos_status.dataExpedicao AS data_expedicao_status,
-        pedidos_status.dataColeta AS data_coleta_status,
-        pedidos_status.transportador AS transportador_json_status,
-        pedidos_status.formaEnvio AS forma_envio_status,
-        separacoes.situacao AS situacao_separacao,
-        nfes.numero AS numero_nota,
-        nfes.chaveAcesso AS chave_acesso_nota,
-        nfes.valor AS valor_nota,
-        etiquetas.status AS status_transportadora,
-        etiquetas.lastStatusDate AS ultima_atualizacao_status,
-        etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
-        etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
-        pedidos.obs_interna AS obs_interna
-      FROM 
-        \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
-        ON pedidos.id = pedidos_status.idPedido
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
-        ON pedidos.id = separacoes.idOrigem
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
-        ON pedidos.id_nota_fiscal = nfes.id
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
-        ON pedidos.id = etiquetas.idPedido
-      WHERE 
-        PARSE_DATE('%d/%m/%Y', pedidos.data_pedido) BETWEEN DATE(@startDate) AND DATE(@endDate)
-      ORDER BY pedidos.data_pedido DESC;
-    `;
-
-    const queryOptions = {
-      query,
-      params: {
-        startDate,
-        endDate,
-      },
-      timeout: this.queryTimeout,
-    };
-
-    console.log('Query do relatório:', query);
-    console.log('Parâmetros da query:', queryOptions.params);
-
-    try {
-      console.log('Executando query de relatório...');
-      const [rows] = await this.bigquery.query(queryOptions);
-      console.log('Query de relatório executada com sucesso. Resultados:', rows?.length || 0);
-      return rows as OrderSearchResult[];
-    } catch (error) {
-      console.error('Erro no relatório do BigQuery:', error);
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }

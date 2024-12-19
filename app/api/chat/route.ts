@@ -360,6 +360,68 @@ async function searchOrder(searchValue: string) {
 	}
 }
 
+// Função auxiliar para buscar informações do pedido
+async function fetchOrderInfo(orderNumber: string) {
+	try {
+		console.log('Iniciando busca de pedido:', orderNumber);
+
+		// Verificar se as credenciais do BigQuery estão disponíveis
+		if (!process.env.GOOGLE_CREDENTIALS) {
+			console.error('Credenciais do BigQuery não encontradas');
+			throw new Error('BigQuery credentials not configured');
+		}
+
+		try {
+			const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+			console.log('Validando credenciais do BigQuery...');
+			console.log('Project ID presente:', Boolean(credentials.project_id));
+			console.log('Client Email presente:', Boolean(credentials.client_email));
+			console.log('Private Key presente:', Boolean(credentials.private_key));
+
+			if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+				console.error('Credenciais do BigQuery inválidas ou incompletas');
+				throw new Error('Invalid BigQuery credentials format');
+			}
+
+			// Verificar se a private_key está formatada corretamente
+			if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
+				console.error('Private key do BigQuery mal formatada');
+				throw new Error('Invalid BigQuery private key format');
+			}
+
+			console.log('Credenciais do BigQuery validadas com sucesso');
+		} catch (error) {
+			console.error('Erro ao parsear credenciais do BigQuery:', error);
+			throw new Error('Invalid BigQuery credentials JSON');
+		}
+
+		// Importação dinâmica do BigQueryService
+		const { BigQueryService } = await import('@/lib/bigquery');
+		const bigQueryService = new BigQueryService();
+		
+		console.log('Executando busca com valor:', orderNumber);
+		const results = await bigQueryService.searchOrder(orderNumber);
+		console.log('Resultados encontrados:', results?.length || 0);
+
+		if (!results || results.length === 0) {
+			throw new Error('Pedido não encontrado');
+		}
+
+		if (results.length > 0) {
+			console.log('Primeiro resultado:', {
+				id_pedido: results[0].id_pedido,
+				numero_pedido: results[0].numero_pedido,
+				situacao_pedido: results[0].situacao_pedido
+			});
+		}
+
+		return results[0];
+	} catch (error) {
+		console.error('Erro ao buscar pedido:', error);
+		throw error;
+	}
+}
+
 export async function POST(req: Request) {
 	try {
 		const { messages, sessionId, userId, isNewSession } = await req.json();
@@ -391,7 +453,7 @@ export async function POST(req: Request) {
 				if (!order) {
 					return new Response(
 						JSON.stringify({ 
-							message: "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente." 
+							message: "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o n��mero está correto e tente novamente." 
 						})
 					);
 				}

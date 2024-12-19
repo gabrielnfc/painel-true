@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bigQueryService } from '@/lib/bigqueryService';
 import { auth } from '@clerk/nextjs';
 
 export const runtime = 'nodejs';
@@ -62,9 +61,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Verificar se as credenciais são um JSON válido
     try {
       const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      console.log('Validando credenciais do BigQuery...');
+      console.log('Project ID presente:', Boolean(credentials.project_id));
+      console.log('Client Email presente:', Boolean(credentials.client_email));
+      console.log('Private Key presente:', Boolean(credentials.private_key));
+
       if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
         console.error('Credenciais do BigQuery inválidas ou incompletas');
         return NextResponse.json(
@@ -72,6 +75,17 @@ export async function GET(req: NextRequest) {
           { status: 500 }
         );
       }
+
+      // Verificar se a private_key está formatada corretamente
+      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
+        console.error('Private key do BigQuery mal formatada');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery private key format' },
+          { status: 500 }
+        );
+      }
+
+      console.log('Credenciais do BigQuery validadas com sucesso');
     } catch (error) {
       console.error('Erro ao parsear credenciais do BigQuery:', error);
       return NextResponse.json(
@@ -81,8 +95,21 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('Iniciando busca no BigQuery');
+    // Importação dinâmica do BigQueryService
+    const { BigQueryService } = await import('@/lib/bigquery');
+    const bigQueryService = new BigQueryService();
+    
+    console.log('Executando busca com valor:', searchValue);
     const results = await bigQueryService.searchOrder(searchValue);
     console.log('Resultados encontrados:', results?.length || 0);
+
+    if (results && results.length > 0) {
+      console.log('Primeiro resultado:', {
+        id_pedido: results[0].id_pedido,
+        numero_pedido: results[0].numero_pedido,
+        situacao_pedido: results[0].situacao_pedido
+      });
+    }
 
     return NextResponse.json({ results });
   } catch (error) {
@@ -146,7 +173,7 @@ export async function POST(req: Request) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CREDENTIALS) {
+    if (!process.env.GOOGLE_CREDENTIALS) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
         { error: 'BigQuery credentials not configured' },
@@ -154,18 +181,71 @@ export async function POST(req: Request) {
       );
     }
 
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      console.log('Validando credenciais do BigQuery...');
+      console.log('Project ID presente:', Boolean(credentials.project_id));
+      console.log('Client Email presente:', Boolean(credentials.client_email));
+      console.log('Private Key presente:', Boolean(credentials.private_key));
+
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        console.error('Credenciais do BigQuery inválidas ou incompletas');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery credentials format' },
+          { status: 500 }
+        );
+      }
+
+      // Verificar se a private_key está formatada corretamente
+      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
+        console.error('Private key do BigQuery mal formatada');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery private key format' },
+          { status: 500 }
+        );
+      }
+
+      console.log('Credenciais do BigQuery validadas com sucesso');
+    } catch (error) {
+      console.error('Erro ao parsear credenciais do BigQuery:', error);
+      return NextResponse.json(
+        { error: 'Invalid BigQuery credentials JSON' },
+        { status: 500 }
+      );
+    }
+
     console.log('Iniciando busca no BigQuery');
+    // Importação dinâmica do BigQueryService
+    const { BigQueryService } = await import('@/lib/bigquery');
+    const bigQueryService = new BigQueryService();
+    
+    console.log('Executando busca com valor:', searchValue);
     const results = await bigQueryService.searchOrder(searchValue);
     console.log('Resultados encontrados:', results?.length || 0);
+
+    if (results && results.length > 0) {
+      console.log('Primeiro resultado:', {
+        id_pedido: results[0].id_pedido,
+        numero_pedido: results[0].numero_pedido,
+        situacao_pedido: results[0].situacao_pedido
+      });
+    }
 
     return NextResponse.json({ results });
   } catch (error) {
     console.error('Erro detalhado na busca de pedidos:', error);
     
     // Verificar se é um erro de credenciais
-    if (error instanceof Error && error.message.includes('credentials')) {
+    if (error instanceof Error) {
+      if (error.message.includes('credentials')) {
+        return NextResponse.json(
+          { error: 'BigQuery authentication failed' },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: 'BigQuery authentication failed' },
+        { error: error.message },
         { status: 500 }
       );
     }
