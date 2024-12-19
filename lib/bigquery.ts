@@ -86,42 +86,36 @@ export class BigQueryService {
     
     try {
       // Verificar se as credenciais estão disponíveis
-      if (!process.env.GOOGLE_CREDENTIALS) {
+      if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
+          !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
+          !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
         console.error('Credenciais do BigQuery não encontradas no ambiente');
         throw new Error('BigQuery credentials not found in environment');
       }
 
-      let credentials;
-      try {
-        credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-      } catch (parseError) {
-        console.error('Erro ao parsear GOOGLE_CREDENTIALS:', parseError);
-        throw new Error('Failed to parse BigQuery credentials');
-      }
-
       // Log detalhado da validação das credenciais
       const validationStatus = {
-        hasProjectId: Boolean(credentials.project_id),
-        hasClientEmail: Boolean(credentials.client_email),
-        hasPrivateKey: Boolean(credentials.private_key),
+        hasProjectId: Boolean(process.env.GOOGLE_CLOUD_PROJECT_ID),
+        hasClientEmail: Boolean(process.env.GOOGLE_CLOUD_CLIENT_EMAIL),
+        hasPrivateKey: Boolean(process.env.GOOGLE_CLOUD_PRIVATE_KEY),
       };
 
       console.log('Status de validação das credenciais:', validationStatus);
 
       if (!validationStatus.hasProjectId || !validationStatus.hasClientEmail || !validationStatus.hasPrivateKey) {
-        throw new Error('Credenciais do BigQuery incompletas. Verifique se project_id, client_email e private_key estão presentes.');
+        throw new Error('Credenciais do BigQuery incompletas');
       }
 
       // Inicializar o cliente do BigQuery com as credenciais
       this.bigquery = new BigQuery({
-        projectId: credentials.project_id,
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
         credentials: {
-          client_email: credentials.client_email,
-          private_key: credentials.private_key.replace(/\\n/g, '\n'), // Garantir que as quebras de linha estejam corretas
+          client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY.replace(/\\n/g, '\n'),
         },
       });
 
-      console.log('BigQueryService inicializado com sucesso para o projeto:', credentials.project_id);
+      console.log('BigQueryService inicializado com sucesso para o projeto:', process.env.GOOGLE_CLOUD_PROJECT_ID);
     } catch (error) {
       console.error('Erro ao inicializar BigQueryService:', error);
       throw error;

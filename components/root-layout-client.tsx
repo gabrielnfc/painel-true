@@ -10,11 +10,11 @@ const inter = Inter({ subsets: ['latin'] });
 
 export function RootLayoutClient({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="pt-BR" suppressHydrationWarning>
+		<html lang="pt-BR" suppressHydrationWarning className="min-h-screen">
 			<head>
 				<link rel="icon" href="/images/logo-true.svg" type="image/svg+xml" />
 			</head>
-			<body className={inter.className}>
+			<body className={`${inter.className} min-h-screen bg-background`}>
 				<ClerkProvider
 					appearance={{
 						elements: {
@@ -30,8 +30,10 @@ export function RootLayoutClient({ children }: { children: React.ReactNode }) {
 						disableTransitionOnChange
 						storageKey="truesource-theme"
 					>
-						<SidebarProvider>{children}</SidebarProvider>
-						<Toaster />
+						<div className="min-h-screen bg-background">
+							<SidebarProvider>{children}</SidebarProvider>
+							<Toaster />
+						</div>
 					</ThemeProvider>
 				</ClerkProvider>
 			</body>

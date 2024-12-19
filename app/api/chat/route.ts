@@ -1,495 +1,58 @@
 import { OpenAIStream, StreamingTextResponse } from 'ai';
-import OpenAI from 'openai';
+import { Configuration, OpenAIApi } from 'openai-edge';
+import { BigQueryService } from '@/lib/bigquery';
 import { systemPrompt } from '@/lib/prompts/system-prompt';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { createClient } from '@supabase/supabase-js';
-import { auth } from '@clerk/nextjs';
-import { createChatSession } from '@/lib/supabaseService';
 
-type ExtendedChatMessage = ChatCompletionMessageParam & {
-	created_at?: string;
-	session_id?: string;
-};
-
-export const runtime = 'nodejs';
-
-const openai = new OpenAI({
-	apiKey: process.env.OPENAI_API_KEY!
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-const supabase = createClient(
-	process.env.NEXT_PUBLIC_SUPABASE_URL!,
-	process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const openai = new OpenAIApi(configuration);
 
-// Função para recuperar a sessão do chat
-async function getChatSession(sessionId: string) {
-	try {
-		// Buscar a sessão
-		const { data: session } = await supabase
-			.from('chat_sessions')
-			.select('*')
-			.eq('id', sessionId)
-			.single();
-
-		if (!session) return null;
-
-		// Verificar se a sessão não expirou (1 hora)
-		const lastActivity = new Date(session.last_activity);
-		const now = new Date();
-		const hoursDiff = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
-
-		if (hoursDiff > 1) {
-			// Sessão expirada, deletar
-			await supabase.from('chat_sessions').delete().eq('id', sessionId);
-			await supabase.from('chat_messages').delete().eq('session_id', sessionId);
-			return null;
-		}
-
-		// Buscar mensagens da sessão
-		const { data: messages } = await supabase
-			.from('chat_messages')
-			.select('*')
-			.eq('session_id', sessionId)
-			.order('created_at', { ascending: true });
-
-		return {
-			session,
-			messages: messages || []
-		};
-	} catch (error) {
-		console.error('Error getting chat session:', error);
-		return null;
-	}
-}
-
-// Função para salvar a sessão no Supabase
-async function saveSessionToSupabase(sessionData: any) {
-	try {
-		const { messages, orderContext } = sessionData;
-		
-		// Obter ID do usuário do Clerk
-		const { userId } = auth();
-		
-		// Verificar se o usuário está autenticado
-		if (!userId) {
-			throw new Error('Usuário não autenticado');
-		}
-
-		const sessionId = messages[0]?.session_id || crypto.randomUUID();
-		
-		// Primeiro, buscar todas as sessões antigas do usuário
-		const { data: oldSessions } = await supabase
-			.from('chat_sessions')
-			.select('id')
-			.eq('user_id', userId);
-
-		if (oldSessions && oldSessions.length > 0) {
-			const sessionIds = oldSessions.map(session => session.id);
-			
-			// Deletar todas as mensagens antigas
-			await supabase
-				.from('chat_messages')
-				.delete()
-				.in('session_id', sessionIds);
-			
-			// Deletar todas as sessões antigas
-			await supabase
-				.from('chat_sessions')
-				.delete()
-				.in('id', sessionIds);
-		}
-
-		// Criar nova sessão
-		const { error: sessionError } = await supabase
-			.from('chat_sessions')
-			.insert({
-				id: sessionId,
-				user_id: userId,
-				last_activity: new Date().toISOString()
-			});
-
-		if (sessionError) {
-			console.error('Error saving chat session:', sessionError);
-			return;
-		}
-
-		// Salvar apenas as mensagens da sessão atual
-		const messagesToSave = messages.map((msg: ExtendedChatMessage) => ({
-			session_id: sessionId,
-			role: msg.role,
-			content: (msg.content || '').slice(0, 1500),
-			order_data: msg.role === 'system' && orderContext ? 
-				JSON.stringify(orderContext).slice(0, 1500) : null,
-			created_at: msg.created_at || new Date().toISOString()
-		}));
-
-		const { error: messageError } = await supabase
-			.from('chat_messages')
-			.insert(messagesToSave);
-
-		if (messageError) {
-			console.error('Error saving chat messages:', messageError);
-		}
-
-		return sessionId;
-	} catch (error) {
-		console.error('Error in saveSessionToSupabase:', error);
-	}
-}
-
-// Função auxiliar para formatar a resposta do pedido
-async function formatOrderResponse(order: any) {
-	try {
-		console.log('Dados brutos do pedido:', JSON.stringify(order, null, 2));
-
-		// Validar e processar dados do cliente
-		const cliente = typeof order.cliente_json === 'string' ? 
-			JSON.parse(order.cliente_json) : order.cliente_json;
-		
-		if (!cliente) {
-			throw new Error('Dados do cliente não disponíveis');
-		}
-
-		// Validar e processar itens do pedido
-		let itens = [];
-		try {
-			if (typeof order.itens_pedido === 'string') {
-				itens = JSON.parse(order.itens_pedido);
-			} else if (Array.isArray(order.itens_pedido)) {
-				itens = order.itens_pedido;
-			} else {
-				throw new Error('Formato de itens inválido');
-			}
-
-			console.log('Itens processados:', JSON.stringify(itens, null, 2));
-		} catch (e) {
-			console.error('Erro ao processar itens do pedido:', e, order.itens_pedido);
-			throw new Error('Erro ao processar itens do pedido');
-		}
-		
-		if (!Array.isArray(itens) || itens.length === 0) {
-			throw new Error('Itens do pedido não disponíveis');
-		}
-
-		// Processar e validar itens
-		const formattedItems = itens.map((item: any, index: number) => {
-			const campos = Object.entries(item.item).reduce((acc, [key, value]) => {
-				acc[key.toLowerCase()] = value;
-				return acc;
-			}, {} as any);
-
-			const descricao = campos.descricao || campos.nome || campos.produto || 
-				campos.descricao_produto || "Nome não disponível";
-			
-			let quantidade = 0;
-			if ('quantidade' in campos) quantidade = Number(campos.quantidade);
-			else if ('qtde' in campos) quantidade = Number(campos.qtde);
-			else if ('quantidade_pedida' in campos) quantidade = Number(campos.quantidade_pedida);
-			
-			let valorUnitario = 0;
-			if ('valor_unitario' in campos) valorUnitario = Number(campos.valor_unitario);
-			else if ('valor' in campos) valorUnitario = Number(campos.valor);
-			else if ('preco' in campos) valorUnitario = Number(campos.preco);
-			else if ('valor_produto' in campos) valorUnitario = Number(campos.valor_produto);
-
-			const valorFormatado = !isNaN(valorUnitario) ? `R$ ${valorUnitario.toFixed(2)}` : "Preço não disponível";
-
-			return {
-				index: index + 1,
-				descricao,
-				quantidade,
-				valor_unitario: valorUnitario,
-				valor_formatado: valorFormatado,
-				formatted: `${descricao} (${quantidade} unidade${quantidade > 1 ? 's' : ''}) - ${valorFormatado}`
-			};
-		});
-
-		// Construir o contexto completo
-		const contextToSave = {
-			...order,
-			_formatted_items: formattedItems,
-			_formatted_date: order.data_pedido || "Data não disponível",
-			_last_query_time: new Date().toISOString()
-		};
-
-		// Construir a resposta formatada
-		let response = `📦 Pedido #${order.numero_pedido}\n\n`;
-
-		// Datas do Pedido
-		response += `📅 Datas\n\n`;
-		if (order.data_pedido) response += `- Data do Pedido: ${order.data_pedido}\n`;
-		if (order.data_faturamento_status) {
-			const dataFaturamento = new Date(order.data_faturamento_status);
-			response += `- Data de Faturamento: ${dataFaturamento.toLocaleDateString('pt-BR')}\n`;
-		}
-		if (order.data_coleta_status) {
-			const dataColeta = new Date(order.data_coleta_status);
-			response += `- Data de Coleta: ${dataColeta.toLocaleDateString('pt-BR')}\n`;
-		}
-		if (order.data_entrega) response += `- Data de Entrega: ${order.data_entrega}\n`;
-		if (order.data_prevista) response += `- Data Prevista: ${order.data_prevista}\n`;
-		response += '\n';
-
-		// Status
-		response += `✅ Status: ${order.situacao_pedido || "Status não disponível"}\n\n`;
-
-		// Informações do Cliente
-		response += `👤 Informações do Cliente\n\n`;
-		response += `- Nome: ${cliente.nome || "Nome não disponível"}\n`;
-		response += `- CPF/CNPJ: ${cliente.cpf_cnpj || "CPF/CNPJ não disponível"}\n`;
-		response += `- 📧 Email: ${cliente.email || "Email não disponível"}\n`;
-		response += `- 📱 Telefone: ${cliente.fone || cliente.celular || "Telefone não disponível"}\n\n`;
-
-		// Endereço de Entrega
-		response += `📍 Endereço de Entrega\n\n`;
-		response += `- Endereço: ${cliente.endereco || "Endereço não disponível"}\n`;
-		response += `- Bairro: ${cliente.bairro || "Bairro não disponível"}\n`;
-		response += `- Cidade: ${cliente.cidade || "Cidade não disponível"}\n`;
-		response += `- UF: ${cliente.uf || "UF não disponível"}\n`;
-		response += `- CEP: ${cliente.cep || "CEP não disponível"}\n\n`;
-
-		// Informações de Entrega
-		response += `🚚 Informações de Entrega\n\n`;
-		response += `- Transportadora: ${order.nome_transportador || "Transportadora não definida"}\n`;
-		response += `- Tipo de Frete: ${order.forma_frete || "Tipo de frete não definido"}\n`;
-		response += `- Frete: ${order.frete_por_conta === 'R' ? 'CIF (Remetente)' : 'FOB (Destinatário)'}\n\n`;
-
-		// Informações Financeiras
-		response += `💳 Informações Financeiras\n\n`;
-		response += `- Valor Total dos Produtos: R$ ${Number(order.total_produtos || 0).toFixed(2).replace('.', ',')}\n`;
-		response += `- Valor Total do Pedido: R$ ${Number(order.total_pedido || 0).toFixed(2).replace('.', ',')}\n`;
-		response += `- Desconto Aplicado: R$ ${Number(order.valor_desconto || 0).toFixed(2).replace('.', ',')}\n\n`;
-
-		// Nota Fiscal
-		response += `📝 Nota Fiscal\n\n`;
-		response += `- Número: ${order.numero_nota || "Nota fiscal não emitida"}\n`;
-		response += `- Chave de Acesso: ${order.chave_acesso_nota || "Chave de acesso não disponível"}\n\n`;
-
-		// Itens do Pedido
-		response += `📦 Itens do Pedido\n\n`;
-		formattedItems.forEach((item, index) => {
-			response += `${index + 1}. ${item.formatted}\n`;
-		});
-
-		return { response, contextToSave };
-	} catch (error) {
-		console.error('Erro ao formatar resposta do pedido:', error);
-		throw error;
-	}
-}
-
-// Função para limpar histórico do chat
-async function cleanupChatHistory(userId: string) {
-	try {
-		// Primeiro, buscar todas as sessões do usuário
-		const { data: sessions } = await supabase
-			.from('chat_sessions')
-			.select('id')
-			.eq('user_id', userId);
-
-		if (sessions && sessions.length > 0) {
-			const sessionIds = sessions.map(session => session.id);
-			
-			// Deletar todas as mensagens das sessões do usuário
-			await supabase
-				.from('chat_messages')
-				.delete()
-				.in('session_id', sessionIds);
-			
-			// Deletar todas as sessões do usuário
-			await supabase
-				.from('chat_sessions')
-				.delete()
-				.in('id', sessionIds);
-		}
-	} catch (error) {
-		console.error('Error cleaning up chat history:', error);
-	}
-}
-
-// Função para buscar pedido
-async function searchOrder(searchValue: string) {
-	try {
-		console.log('Iniciando busca de pedido:', searchValue);
-
-		// Importação dinâmica do BigQueryService
-		const { BigQueryService } = await import('@/lib/bigquery');
-		const bigQueryService = new BigQueryService();
-		
-		console.log('Executando busca com valor:', searchValue);
-		const results = await bigQueryService.searchOrder(searchValue);
-		console.log('Resultados encontrados:', results?.length || 0);
-
-		if (!results || results.length === 0) {
-			console.log('Nenhum resultado encontrado');
-			return null;
-		}
-
-		console.log('Primeiro resultado:', {
-			id_pedido: results[0].id_pedido,
-			numero_pedido: results[0].numero_pedido,
-			situacao_pedido: results[0].situacao_pedido
-		});
-
-		return results[0];
-	} catch (error) {
-		console.error('Error searching order:', error);
-		throw error;
-	}
-}
-
-// Função auxiliar para buscar informações do pedido
-async function fetchOrderInfo(orderNumber: string) {
-	try {
-		console.log('Iniciando busca de pedido:', orderNumber);
-
-		// Verificar se as credenciais do BigQuery estão disponíveis
-		if (!process.env.GOOGLE_CREDENTIALS) {
-			console.error('Credenciais do BigQuery não encontradas');
-			throw new Error('BigQuery credentials not configured');
-		}
-
-		try {
-			const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-			console.log('Validando credenciais do BigQuery...');
-			console.log('Project ID presente:', Boolean(credentials.project_id));
-			console.log('Client Email presente:', Boolean(credentials.client_email));
-			console.log('Private Key presente:', Boolean(credentials.private_key));
-
-			if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
-				console.error('Credenciais do BigQuery inválidas ou incompletas');
-				throw new Error('Invalid BigQuery credentials format');
-			}
-
-			// Verificar se a private_key está formatada corretamente
-			if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
-				console.error('Private key do BigQuery mal formatada');
-				throw new Error('Invalid BigQuery private key format');
-			}
-
-			console.log('Credenciais do BigQuery validadas com sucesso');
-		} catch (error) {
-			console.error('Erro ao parsear credenciais do BigQuery:', error);
-			throw new Error('Invalid BigQuery credentials JSON');
-		}
-
-		// Importação dinâmica do BigQueryService
-		const { BigQueryService } = await import('@/lib/bigquery');
-		const bigQueryService = new BigQueryService();
-		
-		console.log('Executando busca com valor:', orderNumber);
-		const results = await bigQueryService.searchOrder(orderNumber);
-		console.log('Resultados encontrados:', results?.length || 0);
-
-		if (!results || results.length === 0) {
-			throw new Error('Pedido não encontrado');
-		}
-
-		if (results.length > 0) {
-			console.log('Primeiro resultado:', {
-				id_pedido: results[0].id_pedido,
-				numero_pedido: results[0].numero_pedido,
-				situacao_pedido: results[0].situacao_pedido
-			});
-		}
-
-		return results[0];
-	} catch (error) {
-		console.error('Erro ao buscar pedido:', error);
-		throw error;
-	}
+async function searchOrder(orderId: string) {
+  try {
+    const bigquery = new BigQueryService();
+    const order = await bigquery.searchOrder(orderId);
+    return order;
+  } catch (error) {
+    console.error('Erro ao buscar pedido:', error);
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
-	try {
-		const { messages, sessionId, userId, isNewSession } = await req.json();
+  const json = await req.json();
+  const { messages } = json;
 
-		console.log('Recebida requisição com:', { sessionId, userId, isNewSession });
+  // Verifica se a última mensagem do usuário contém um número de pedido
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage.role === 'user') {
+    const orderMatch = lastMessage.content.match(/\b\d{5,}\b/);
+    if (orderMatch) {
+      const orderId = orderMatch[0];
+      const orderData = await searchOrder(orderId);
+      
+      if (orderData) {
+        messages.push({
+          role: 'system',
+          content: `Informações do pedido encontradas: ${JSON.stringify(orderData, null, 2)}`
+        });
+      }
+    }
+  }
 
-		if (!messages || !Array.isArray(messages) || messages.length === 0) {
-			return new Response(
-				JSON.stringify({ error: 'Messages array is required' }),
-				{ status: 400 }
-			);
-		}
+  const response = await openai.createChatCompletion({
+    model: 'gpt-4',
+    stream: true,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      ...messages
+    ]
+  });
 
-		const lastMessage = messages[messages.length - 1];
-		if (!lastMessage || !lastMessage.content) {
-			return new Response(
-				JSON.stringify({ error: 'Invalid message format' }),
-				{ status: 400 }
-			);
-		}
-
-		// Verificar se a mensagem é uma busca de pedido
-		const orderNumberMatch = lastMessage.content.match(/pedido\s+(\d+)/i);
-		if (orderNumberMatch) {
-			try {
-				const orderNumber = orderNumberMatch[1];
-				console.log('Buscando pedido:', orderNumber);
-				
-				const order = await searchOrder(orderNumber);
-				console.log('Resultado da busca:', order);
-				
-				if (!order) {
-					const notFoundMessage = "Desculpe, não encontrei nenhum pedido com esse número. Por favor, verifique se o número está correto e tente novamente.";
-					console.log('Pedido não encontrado:', notFoundMessage);
-					return new Response(JSON.stringify({ message: notFoundMessage }));
-				}
-
-				try {
-					const { response, contextToSave } = await formatOrderResponse(order);
-					console.log('Resposta formatada gerada com sucesso');
-
-					// Salvar o contexto no Supabase
-					if (sessionId) {
-						const supabase = createClient(
-							process.env.NEXT_PUBLIC_SUPABASE_URL!,
-							process.env.SUPABASE_SERVICE_KEY!
-						);
-
-						await supabase
-							.from('chat_messages')
-							.insert({
-								session_id: sessionId,
-								role: 'assistant',
-								content: response,
-								context: contextToSave,
-							});
-						
-						console.log('Contexto salvo no Supabase');
-					}
-
-					console.log('Retornando resposta formatada');
-					return new Response(JSON.stringify({ message: response }));
-				} catch (formatError) {
-					console.error('Erro ao formatar resposta:', formatError);
-					throw formatError;
-				}
-			} catch (error) {
-				console.error('Error processing order search:', error);
-				const errorMessage = "Desculpe, ocorreu um erro ao buscar o pedido. Por favor, tente novamente.";
-				return new Response(JSON.stringify({ message: errorMessage }));
-			}
-		}
-
-		// Se não for uma busca de pedido, retornar mensagem padrão
-		const welcomeMessage = "Olá! Sou a assistente virtual da True Source. Posso ajudar você a:\n\n" +
-								"• Buscar informações sobre pedidos\n" +
-								"• Verificar status de entregas\n" +
-								"• Consultar notas fiscais\n" +
-								"• Analisar dados de transportadoras\n\n" +
-								"Como posso ajudar você hoje?";
-		
-		return new Response(JSON.stringify({ message: welcomeMessage }));
-	} catch (error) {
-		console.error('Error in chat route:', error);
-		return new Response(
-			JSON.stringify({ error: 'Internal server error' }),
-			{ status: 500 }
-		);
-	}
-}
-
-console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const stream = OpenAIStream(response);
+  return new StreamingTextResponse(stream);
+} 

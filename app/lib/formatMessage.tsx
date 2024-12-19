@@ -38,44 +38,38 @@ const processLine = (line: string): React.ReactNode => {
 				</p>
 			);
 		} else {
-			result = (
-				<p key={line} className="mb-2 ml-4">
-					<span className="font-semibold text-foreground/90 min-w-[140px] inline-block">
-						{emoji.trim()}
-					</span>
-					<span className="ml-2">{content}</span>
-				</p>
-			);
-		}
-	}
-	// URL de rastreamento
-	else if (line.toLowerCase().includes('rastreamento')) {
-		const urlMatch = line.match(URL_REGEX);
-		if (urlMatch) {
-			result = (
-				<p key={line} className="mb-2 ml-4">
-					<span className="font-semibold text-foreground/90 min-w-[140px] inline-block">
-						🔍 Rastreamento
-					</span>
-					<a
-						href={urlMatch[0]}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-blue-500 hover:text-blue-600 underline ml-2"
-					>
-						Rastrear Pedido
-					</a>
-				</p>
-			);
-		} else if (line.includes('Rastrear Pedido')) {
-			result = (
-				<p key={line} className="mb-2 ml-4">
-					<span className="font-semibold text-foreground/90 min-w-[140px] inline-block">
-						🔍 Rastreamento
-					</span>
-					<span className="ml-2">Aguardando código de rastreio</span>
-				</p>
-			);
+			// Verifica se é uma linha de rastreamento
+			if (emoji.trim().includes('🔍')) {
+				const urlMatch = content.match(URL_REGEX);
+				result = (
+					<p key={line} className="mb-2 ml-4">
+						<span className="font-semibold text-foreground/90 min-w-[140px] inline-block">
+							{emoji.trim()}
+						</span>
+						{urlMatch ? (
+							<a
+								href={urlMatch[0]}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-primary hover:text-primary/80 underline ml-2"
+							>
+								Rastrear pedido
+							</a>
+						) : (
+							<span className="ml-2">Aguardando código de rastreio</span>
+						)}
+					</p>
+				);
+			} else {
+				result = (
+					<p key={line} className="mb-2 ml-4">
+						<span className="font-semibold text-foreground/90 min-w-[140px] inline-block">
+							{emoji.trim()}
+						</span>
+						<span className="ml-2">{content}</span>
+					</p>
+				);
+			}
 		}
 	}
 	// Item do pedido
@@ -137,10 +131,12 @@ const clearCacheIfNeeded = () => {
 export const formatMessageWithLinks = (text: string): React.ReactNode[] => {
 	clearCacheIfNeeded();
 
+	// Remove markdown e outros caracteres especiais
 	const cleanText = text
 		.replace(/```markdown\n|```/g, '')
 		.replace(/\*\*/g, '')
 		.trim();
 
-	return cleanText.split('\n').map(processLine);
+	// Divide o texto em linhas e processa cada uma
+	return cleanText.split('\n').map((line, index) => processLine(line.trim()));
 };

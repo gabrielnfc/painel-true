@@ -1,0 +1,75 @@
+1|/* Container principal do chat */
+2|.chat-card {
+3|  @apply flex flex-col h-full bg-background border border-border relative
+4|         shadow-sm dark:shadow-none
+5|         dark:bg-background;
+6|}
+7|
+8|/* Cabeçalho do chat */
+9|.chat-header {
+10|  @apply px-6 py-4 flex items-center gap-4 
+11|         bg-background/90 backdrop-blur-sm
+12|         border-b border-border/50 sticky top-0 z-10 
+13|         dark:bg-background dark:border-border/50;
+14|}
+15|
+16|/* Container de mensagens */
+17|.messages-container {
+18|  @apply flex-1 overflow-hidden relative 
+19|         bg-muted/20 dark:bg-background;
+20|}
+21|
+22|/* Container de input */
+23|.chat-input-container {
+24|  @apply p-4 border-t border-border/50
+25|         bg-background/90 backdrop-blur-sm
+26|         dark:bg-background dark:border-border/50
+27|         relative;
+28|}
+29|
+30|/* Bolhas de mensagem */
+31|.chat-message-bubble {
+32|  @apply rounded-2xl px-4 py-2.5 
+33|         max-w-[85%] md:max-w-[75%] lg:max-w-[65%] 
+34|         transition-all relative;
+35|}
+36|
+37|.chat-message-bubble.user {
+38|  @apply bg-primary text-primary-foreground 
+39|         rounded-tr-none ml-auto
+40|         shadow-sm dark:shadow-none
+41|         dark:bg-primary;
+42|}
+43|
+44|.chat-message-bubble.assistant {
+45|  @apply bg-card text-card-foreground 
+46|         rounded-tl-none border border-border/50
+47|         shadow-sm dark:shadow-none
+48|         dark:bg-card dark:border-border/50;
+49|}
+50|
+51|/* Tipografia */
+52|.chat-title {
+53|  @apply text-base font-medium text-foreground/90;
+54|}
+55|
+56|.chat-subtitle {
+57|  @apply text-xs font-medium text-muted-foreground;
+58|}
+59|
+60|.chat-message-text {
+61|  @apply text-sm leading-relaxed text-foreground/90;
+62|}
+63|
+64|.chat-timestamp {
+65|  @apply text-[10px] text-muted-foreground/70 text-right mt-1;
+66|}
+67|
+68|/* Scrollbar personalizada */
+69|.scrollbar-custom::-webkit-scrollbar-thumb {
+70|  @apply bg-muted-foreground/20 
+71|         hover:bg-muted-foreground/30 
+72|         dark:bg-muted-foreground/10 
+73|         dark:hover:bg-muted-foreground/20 
+74|         rounded-full transition-colors;
+75|} 

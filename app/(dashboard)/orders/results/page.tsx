@@ -288,7 +288,10 @@ function ResultsContent() {
 				);
 				const data = await response.json();
 				console.log('Resposta da API:', data);
-				console.log('Número da ordem de compra:', data.results[0]?.numero_ordem_compra);
+				console.log(
+					'Número da ordem de compra:',
+					data.results[0]?.numero_ordem_compra
+				);
 
 				if (!response.ok) {
 					console.error('Erro na API:', data);
@@ -306,15 +309,18 @@ function ResultsContent() {
 				}
 
 				setResult(data.results[0]);
-				console.log('Número ordem de compra:', data.results[0].numero_ordem_compra);
+				console.log(
+					'Número ordem de compra:',
+					data.results[0].numero_ordem_compra
+				);
 			} catch (err) {
 				console.error('Erro ao buscar:', err);
 				setError('Pedido não encontrado');
 				toast({
 					title: 'Erro na busca',
-						description:
-							err instanceof Error ? err.message : 'Erro ao buscar pedido',
-						variant: 'destructive',
+					description:
+						err instanceof Error ? err.message : 'Erro ao buscar pedido',
+					variant: 'destructive',
 				});
 			} finally {
 				setIsLoading(false);
@@ -520,10 +526,10 @@ function ResultsContent() {
 							isDate={true}
 						/>
 						<InfoItem
-								label="Situação Pedido"
-								value={result.situacao_pedido_status}
-								isStatus={true}
-							/>
+							label="Situação Pedido"
+							value={result.situacao_pedido_status}
+							isStatus={true}
+						/>
 						<InfoItem label="Nome Status" value={result.nome_status} />
 						<InfoItem label="Telefone Status" value={result.telefone_status} />
 						<InfoItem label="Email Status" value={result.email_status} />
@@ -621,7 +627,9 @@ function ResultsContent() {
 											variant="outline"
 											size="sm"
 											className="gap-2"
-											onClick={() => window.open(result.url_rastreamento, '_blank')}
+											onClick={() =>
+												window.open(result.url_rastreamento, '_blank')
+											}
 										>
 											Rastrear Pedido
 											<ExternalLink className="h-4 w-4" />
