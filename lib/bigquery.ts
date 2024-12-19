@@ -113,19 +113,34 @@ export class BigQueryService {
         throw new Error('Credenciais do BigQuery incompletas. Verifique se project_id, client_email e private_key estão presentes.');
       }
 
-      // Verificar se a private_key está formatada corretamente
-      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
-        console.error('Private key do BigQuery mal formatada');
-        throw new Error('Invalid BigQuery private key format');
-      }
+      // Processar a private key
+      let privateKey = credentials.private_key;
+      
+      // Remover possíveis caracteres de escape extras e espaços
+      privateKey = privateKey
+        .replace(/\\n/g, '\n')
+        .replace(/\s+/g, '\n')
+        .trim();
 
-      // Inicializar o cliente do BigQuery com as credenciais
+      // Criar o objeto de credenciais completo
+      const fullCredentials = {
+        type: 'service_account',
+        project_id: credentials.project_id,
+        private_key_id: credentials.private_key_id,
+        private_key: privateKey,
+        client_email: credentials.client_email,
+        client_id: credentials.client_id,
+        auth_uri: credentials.auth_uri || 'https://accounts.google.com/o/oauth2/auth',
+        token_uri: credentials.token_uri || 'https://oauth2.googleapis.com/token',
+        auth_provider_x509_cert_url: credentials.auth_provider_x509_cert_url || 'https://www.googleapis.com/oauth2/v1/certs',
+        client_x509_cert_url: credentials.client_x509_cert_url,
+        universe_domain: credentials.universe_domain || 'googleapis.com'
+      };
+
+      // Inicializar o cliente do BigQuery com as credenciais completas
       this.bigquery = new BigQuery({
-        projectId: credentials.project_id,
-        credentials: {
-          client_email: credentials.client_email,
-          private_key: credentials.private_key.replace(/\\n/g, '\n'), // Garantir que as quebras de linha estejam corretas
-        },
+        credentials: fullCredentials,
+        projectId: credentials.project_id
       });
 
       console.log('BigQueryService inicializado com sucesso para o projeto:', credentials.project_id);

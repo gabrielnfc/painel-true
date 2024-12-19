@@ -67,20 +67,43 @@ export async function GET(req: NextRequest) {
       console.log('Project ID presente:', Boolean(credentials.project_id));
       console.log('Client Email presente:', Boolean(credentials.client_email));
       console.log('Private Key presente:', Boolean(credentials.private_key));
+      
+      // Log do tamanho da private key e outros campos importantes
+      if (credentials.private_key) {
+        console.log('Tamanho da private key:', credentials.private_key.length);
+        console.log('Private key começa com:', credentials.private_key.substring(0, 27));
+        console.log('Private key termina com:', credentials.private_key.slice(-25));
+      }
 
-      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
-        console.error('Credenciais do BigQuery inválidas ou incompletas');
+      // Verificar campos obrigatórios
+      const requiredFields = [
+        'type',
+        'project_id',
+        'private_key_id',
+        'private_key',
+        'client_email',
+        'client_id',
+        'auth_uri',
+        'token_uri',
+        'auth_provider_x509_cert_url',
+        'client_x509_cert_url'
+      ];
+
+      const missingFields = requiredFields.filter(field => !credentials[field]);
+      if (missingFields.length > 0) {
+        console.error('Campos obrigatórios ausentes:', missingFields);
         return NextResponse.json(
-          { error: 'Invalid BigQuery credentials format' },
+          { error: `Missing required fields: ${missingFields.join(', ')}` },
           { status: 500 }
         );
       }
 
-      // Verificar se a private_key está formatada corretamente
-      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
-        console.error('Private key do BigQuery mal formatada');
+      // Verificar formato da private key
+      if (!credentials.private_key.includes('-----BEGIN PRIVATE KEY-----') || 
+          !credentials.private_key.includes('-----END PRIVATE KEY-----')) {
+        console.error('Private key mal formatada');
         return NextResponse.json(
-          { error: 'Invalid BigQuery private key format' },
+          { error: 'Invalid private key format' },
           { status: 500 }
         );
       }
