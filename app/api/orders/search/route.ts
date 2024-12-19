@@ -53,66 +53,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_CREDENTIALS) {
+    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
+        !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
+        !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
-        { error: 'BigQuery credentials not configured. Please check environment variables.' },
-        { status: 500 }
-      );
-    }
-
-    try {
-      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-      console.log('Validando credenciais do BigQuery...');
-      console.log('Project ID presente:', Boolean(credentials.project_id));
-      console.log('Client Email presente:', Boolean(credentials.client_email));
-      console.log('Private Key presente:', Boolean(credentials.private_key));
-      
-      // Log do tamanho da private key e outros campos importantes
-      if (credentials.private_key) {
-        console.log('Tamanho da private key:', credentials.private_key.length);
-        console.log('Private key começa com:', credentials.private_key.substring(0, 27));
-        console.log('Private key termina com:', credentials.private_key.slice(-25));
-      }
-
-      // Verificar campos obrigatórios
-      const requiredFields = [
-        'type',
-        'project_id',
-        'private_key_id',
-        'private_key',
-        'client_email',
-        'client_id',
-        'auth_uri',
-        'token_uri',
-        'auth_provider_x509_cert_url',
-        'client_x509_cert_url'
-      ];
-
-      const missingFields = requiredFields.filter(field => !credentials[field]);
-      if (missingFields.length > 0) {
-        console.error('Campos obrigatórios ausentes:', missingFields);
-        return NextResponse.json(
-          { error: `Missing required fields: ${missingFields.join(', ')}` },
-          { status: 500 }
-        );
-      }
-
-      // Verificar formato da private key
-      if (!credentials.private_key.includes('-----BEGIN PRIVATE KEY-----') || 
-          !credentials.private_key.includes('-----END PRIVATE KEY-----')) {
-        console.error('Private key mal formatada');
-        return NextResponse.json(
-          { error: 'Invalid private key format' },
-          { status: 500 }
-        );
-      }
-
-      console.log('Credenciais do BigQuery validadas com sucesso');
-    } catch (error) {
-      console.error('Erro ao parsear credenciais do BigQuery:', error);
-      return NextResponse.json(
-        { error: 'Invalid BigQuery credentials JSON' },
+        { error: 'BigQuery credentials not configured' },
         { status: 500 }
       );
     }
@@ -196,43 +142,12 @@ export async function POST(req: Request) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_CREDENTIALS) {
+    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
+        !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
+        !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
         { error: 'BigQuery credentials not configured' },
-        { status: 500 }
-      );
-    }
-
-    try {
-      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-      console.log('Validando credenciais do BigQuery...');
-      console.log('Project ID presente:', Boolean(credentials.project_id));
-      console.log('Client Email presente:', Boolean(credentials.client_email));
-      console.log('Private Key presente:', Boolean(credentials.private_key));
-
-      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
-        console.error('Credenciais do BigQuery inválidas ou incompletas');
-        return NextResponse.json(
-          { error: 'Invalid BigQuery credentials format' },
-          { status: 500 }
-        );
-      }
-
-      // Verificar se a private_key está formatada corretamente
-      if (!credentials.private_key.includes('BEGIN PRIVATE KEY') || !credentials.private_key.includes('END PRIVATE KEY')) {
-        console.error('Private key do BigQuery mal formatada');
-        return NextResponse.json(
-          { error: 'Invalid BigQuery private key format' },
-          { status: 500 }
-        );
-      }
-
-      console.log('Credenciais do BigQuery validadas com sucesso');
-    } catch (error) {
-      console.error('Erro ao parsear credenciais do BigQuery:', error);
-      return NextResponse.json(
-        { error: 'Invalid BigQuery credentials JSON' },
         { status: 500 }
       );
     }
