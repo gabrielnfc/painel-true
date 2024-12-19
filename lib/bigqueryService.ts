@@ -5,14 +5,20 @@ export class BigQueryService {
   private bigquery: BigQuery | null = null;
   private readonly queryTimeout = 30000; // 30 segundos
 
-  private initializeBigQuery() {
+  constructor() {
+    // Não inicializa o BigQuery no construtor
+    // A inicialização será feita sob demanda
+  }
+
+  private async initializeBigQuery() {
+    // Se já está inicializado, retorna
+    if (this.bigquery) return;
+
     // Se estamos no processo de build, não inicialize o BigQuery
     if (process.env.VERCEL_ENV === 'build') {
       console.log('Pulando inicialização do BigQuery durante o build');
       return;
     }
-
-    if (this.bigquery) return;
 
     console.log('Inicializando BigQueryService');
     
@@ -70,8 +76,8 @@ export class BigQueryService {
       return [];
     }
 
-    // Inicializar BigQuery apenas quando necessário
-    this.initializeBigQuery();
+    // Inicializar BigQuery sob demanda
+    await this.initializeBigQuery();
     
     if (!this.bigquery) {
       throw new Error('BigQuery client not initialized');
@@ -218,8 +224,8 @@ export class BigQueryService {
       return [];
     }
 
-    // Inicializar BigQuery apenas quando necessário
-    this.initializeBigQuery();
+    // Inicializar BigQuery sob demanda
+    await this.initializeBigQuery();
     
     if (!this.bigquery) {
       throw new Error('BigQuery client not initialized');
@@ -319,4 +325,5 @@ export class BigQueryService {
   }
 }
 
-export const bigQueryService = new BigQueryService(); 
+// Não exporta mais uma instância singleton
+// export const bigQueryService = new BigQueryService(); 

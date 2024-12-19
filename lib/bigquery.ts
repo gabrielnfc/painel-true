@@ -65,6 +65,14 @@ export class BigQueryService {
   private readonly queryTimeout = 30000; // 30 segundos de timeout
 
   constructor(config?: BigQueryConfig) {
+    // Não inicializa o BigQuery no construtor
+    // A inicialização será feita sob demanda
+  }
+
+  private async initializeBigQuery() {
+    // Se já está inicializado, retorna
+    if (this.bigquery) return;
+
     // Se estamos no processo de build, não inicialize o BigQuery
     if (process.env.VERCEL_ENV === 'build') {
       console.log('Pulando inicialização do BigQuery durante o build');
@@ -73,33 +81,47 @@ export class BigQueryService {
 
     console.log('Inicializando BigQueryService');
     
-    const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
-    const credentials = config?.credentials || {
-      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    };
-
-    if (!projectId || !credentials.client_email || !credentials.private_key) {
-      console.error('Erro de configuração do BigQuery:', {
-        hasProjectId: !!projectId,
-        hasClientEmail: !!credentials.client_email,
-        hasPrivateKey: !!credentials.private_key,
-      });
-      throw new Error('Missing required BigQuery credentials');
-    }
-
     try {
+      // Verificar se as credenciais estão disponíveis
+      if (!process.env.GOOGLE_CREDENTIALS) {
+        console.error('GOOGLE_CREDENTIALS não encontrada no ambiente');
+        throw new Error('BigQuery credentials not found in environment');
+      }
+
+      let credentials;
+      try {
+        credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      } catch (parseError) {
+        console.error('Erro ao parsear GOOGLE_CREDENTIALS:', parseError);
+        throw new Error('Failed to parse BigQuery credentials');
+      }
+
+      // Log detalhado da validação das credenciais
+      const validationStatus = {
+        hasProjectId: Boolean(credentials.project_id),
+        hasClientEmail: Boolean(credentials.client_email),
+        hasPrivateKey: Boolean(credentials.private_key),
+      };
+
+      console.log('Status de validação das credenciais:', validationStatus);
+
+      if (!validationStatus.hasProjectId || !validationStatus.hasClientEmail || !validationStatus.hasPrivateKey) {
+        throw new Error('Credenciais do BigQuery incompletas. Verifique se project_id, client_email e private_key estão presentes.');
+      }
+
+      // Inicializar o cliente do BigQuery com as credenciais
       this.bigquery = new BigQuery({
-        projectId,
-        credentials,
+        projectId: credentials.project_id,
+        credentials: {
+          client_email: credentials.client_email,
+          private_key: credentials.private_key.replace(/\\n/g, '\n'),
+        },
       });
-      console.log('BigQuery inicializado com sucesso:', {
-        projectId,
-        hasCredentials: !!credentials,
-      });
+
+      console.log('BigQueryService inicializado com sucesso para o projeto:', credentials.project_id);
     } catch (error) {
-      console.error('Erro ao inicializar BigQuery:', error);
-      throw new Error('Failed to initialize BigQuery client');
+      console.error('Erro ao inicializar BigQueryService:', error);
+      throw error;
     }
   }
 
@@ -113,6 +135,9 @@ export class BigQueryService {
       return [];
     }
 
+    // Inicializar BigQuery sob demanda
+    await this.initializeBigQuery();
+    
     if (!this.bigquery) {
       throw new Error('BigQuery client not initialized');
     }
@@ -253,6 +278,9 @@ export class BigQueryService {
       return [];
     }
 
+    // Inicializar BigQuery sob demanda
+    await this.initializeBigQuery();
+    
     if (!this.bigquery) {
       throw new Error('BigQuery client not initialized');
     }
@@ -351,10 +379,11 @@ export class BigQueryService {
   }
 }
 
-// Export a singleton instance
-export const bigQueryService = new BigQueryService();
+// Não exporta mais uma instância singleton
+// export const bigQueryService = new BigQueryService();
 
-// Função de busca exportada
+// Função de busca exportada agora cria uma nova instância
 export async function searchOrders(orderNumber: string) {
-  return bigQueryService.searchOrder(orderNumber);
+  const service = new BigQueryService();
+  return service.searchOrder(orderNumber);
 }

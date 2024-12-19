@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BigQueryService } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +21,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Importação dinâmica do BigQueryService
+    const { BigQueryService } = await import('@/lib/bigquery');
     const bigQueryService = new BigQueryService();
 
     const results = await bigQueryService.getOrdersReport(startDate, endDate);
