@@ -61,10 +61,16 @@ export interface OrderSearchResult {
 }
 
 export class BigQueryService {
-  private bigquery: BigQuery;
+  private bigquery: BigQuery | null = null;
   private readonly queryTimeout = 30000; // 30 segundos de timeout
 
   constructor(config?: BigQueryConfig) {
+    // Se estamos no processo de build, não inicialize o BigQuery
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando inicialização do BigQuery durante o build');
+      return;
+    }
+
     console.log('Inicializando BigQueryService');
     
     const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
@@ -101,6 +107,16 @@ export class BigQueryService {
     searchValue: string,
     options: SearchOptions = {}
   ): Promise<OrderSearchResult[]> {
+    // Se estamos no processo de build, retorne um array vazio
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando busca no BigQuery durante o build');
+      return [];
+    }
+
+    if (!this.bigquery) {
+      throw new Error('BigQuery client not initialized');
+    }
+
     console.log('Iniciando busca no BigQuery:', { searchValue, options });
 
     const {
@@ -231,6 +247,16 @@ export class BigQueryService {
   }
 
   async getOrdersReport(startDate: string, endDate: string): Promise<OrderSearchResult[]> {
+    // Se estamos no processo de build, retorne um array vazio
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando busca no BigQuery durante o build');
+      return [];
+    }
+
+    if (!this.bigquery) {
+      throw new Error('BigQuery client not initialized');
+    }
+
     console.log('Iniciando busca de relatório:', { startDate, endDate });
 
     const query = `

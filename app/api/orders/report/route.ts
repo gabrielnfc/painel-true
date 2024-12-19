@@ -4,6 +4,12 @@ import { BigQueryService } from '@/lib/bigquery';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // Se estamos no processo de build, retorne um array vazio
+  if (process.env.VERCEL_ENV === 'build') {
+    console.log('Pulando busca no BigQuery durante o build');
+    return NextResponse.json({ results: [] });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
