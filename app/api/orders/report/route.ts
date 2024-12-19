@@ -21,6 +21,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Verificar se as credenciais do BigQuery estão disponíveis
+    if (!process.env.GOOGLE_CREDENTIALS) {
+      console.error('Credenciais do BigQuery não encontradas');
+      return NextResponse.json(
+        { error: 'BigQuery credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        console.error('Credenciais do BigQuery inválidas ou incompletas');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery credentials format' },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao parsear credenciais do BigQuery:', error);
+      return NextResponse.json(
+        { error: 'Invalid BigQuery credentials JSON' },
+        { status: 500 }
+      );
+    }
+
     // Importação dinâmica do BigQueryService
     const { BigQueryService } = await import('@/lib/bigquery');
     const bigQueryService = new BigQueryService();

@@ -53,12 +53,27 @@ export async function GET(req: NextRequest) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
-        !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
-        !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
+    if (!process.env.GOOGLE_CREDENTIALS) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
         { error: 'BigQuery credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        console.error('Credenciais do BigQuery inválidas ou incompletas');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery credentials format' },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao parsear credenciais do BigQuery:', error);
+      return NextResponse.json(
+        { error: 'Invalid BigQuery credentials JSON' },
         { status: 500 }
       );
     }
@@ -142,12 +157,27 @@ export async function POST(req: Request) {
     }
 
     // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
-        !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
-        !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
+    if (!process.env.GOOGLE_CREDENTIALS) {
       console.error('Credenciais do BigQuery não encontradas');
       return NextResponse.json(
         { error: 'BigQuery credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      if (!credentials.project_id || !credentials.client_email || !credentials.private_key) {
+        console.error('Credenciais do BigQuery inválidas ou incompletas');
+        return NextResponse.json(
+          { error: 'Invalid BigQuery credentials format' },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao parsear credenciais do BigQuery:', error);
+      return NextResponse.json(
+        { error: 'Invalid BigQuery credentials JSON' },
         { status: 500 }
       );
     }

@@ -169,7 +169,7 @@ async function formatOrderResponse(order: any) {
 		}
 		
 		if (!Array.isArray(itens) || itens.length === 0) {
-			throw new Error('Itens do pedido não dispon��veis');
+			throw new Error('Itens do pedido não disponíveis');
 		}
 
 		// Processar e validar itens
@@ -311,56 +311,28 @@ async function cleanupChatHistory(userId: string) {
 // Função para buscar pedido
 async function searchOrder(searchValue: string) {
 	try {
-		// Construir a URL base
-		let baseUrl;
-		if (process.env.NEXT_PUBLIC_APP_URL) {
-			baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-		} else if (process.env.VERCEL_URL) {
-			baseUrl = `https://${process.env.VERCEL_URL}`;
-		} else {
-			baseUrl = 'http://localhost:3000';
-		}
+		console.log('Iniciando busca de pedido:', searchValue);
 
-		// Remover qualquer barra no final da URL
-		baseUrl = baseUrl.replace(/\/$/, '');
+		// Importação dinâmica do BigQueryService
+		const { BigQueryService } = await import('@/lib/bigquery');
+		const bigQueryService = new BigQueryService();
+		
+		console.log('Executando busca com valor:', searchValue);
+		const results = await bigQueryService.searchOrder(searchValue);
+		console.log('Resultados encontrados:', results?.length || 0);
 
-		console.log('Base URL:', baseUrl);
-		console.log('Buscando pedido:', searchValue);
-
-		// Obter o token de autenticação do Clerk
-		const { getToken } = auth();
-		const token = await getToken();
-
-		const response = await fetch(`${baseUrl}/api/orders/search?q=${searchValue}`, {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${token}`,
-			},
-		});
-
-		console.log('Status da resposta:', response.status);
-
-		if (!response.ok) {
-			console.error('Erro na resposta:', response.statusText);
-			throw new Error(`Failed to fetch order: ${response.statusText}`);
-		}
-
-		const data = await response.json();
-		console.log('Dados recebidos:', data);
-
-		if (!data.results || data.results.length === 0) {
+		if (!results || results.length === 0) {
 			console.log('Nenhum resultado encontrado');
 			return null;
 		}
 
 		console.log('Primeiro resultado:', {
-			id_pedido: data.results[0].id_pedido,
-			numero_pedido: data.results[0].numero_pedido,
-			situacao_pedido: data.results[0].situacao_pedido
+			id_pedido: results[0].id_pedido,
+			numero_pedido: results[0].numero_pedido,
+			situacao_pedido: results[0].situacao_pedido
 		});
 
-		return data.results[0];
+		return results[0];
 	} catch (error) {
 		console.error('Error searching order:', error);
 		throw error;
