@@ -58,7 +58,7 @@ export default function ChatPage() {
 		};
 
 		simulateTyping();
-	}, [showWelcome, messages.length]);
+	}, [messages.length]);
 
 	// Scroll para o final quando houver novas mensagens
 	useEffect(() => {
@@ -87,11 +87,11 @@ export default function ChatPage() {
 
 	return (
 		<div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-2 py-4 sm:px-4">
-			<Card className="w-full max-w-[1200px] rounded-lg border-2 bg-card shadow-[0_2px_40px_-12px] shadow-primary/10 dark:border-slate-800 dark:shadow-slate-900/30">
-				<CardHeader className="border-b border-border/50 bg-muted/50 px-3 py-3 dark:border-slate-800 sm:px-4">
+			<Card className="w-full max-w-[1200px] rounded-lg border-2 bg-background shadow-[0_2px_40px_-12px] shadow-primary/10 dark:border-neutral-800 dark:shadow-white/5">
+				<CardHeader className="border-b border-border/50 bg-muted/50 px-3 py-3 dark:border-neutral-800 sm:px-4">
 					<CardTitle className="flex items-center gap-3">
 						<div className="relative">
-							<Avatar className="h-8 w-8 ring-2 ring-primary/10 dark:ring-slate-800 sm:h-10 sm:w-10">
+							<Avatar className="h-8 w-8 ring-2 ring-primary/10 dark:ring-neutral-800 sm:h-10 sm:w-10">
 								<AvatarImage
 									src="/images/assistant-avatar.png"
 									alt="True Assistant"
@@ -114,15 +114,12 @@ export default function ChatPage() {
 					</CardTitle>
 				</CardHeader>
 
-				<CardContent className="flex flex-col space-y-4 bg-card/50 p-0 dark:bg-slate-950/50">
+				<CardContent className="flex flex-col space-y-4 bg-background/50 p-0 dark:bg-background/50">
 					<ScrollArea className="h-[calc(100vh-16rem)] w-full">
 						<div className="flex flex-col gap-2 px-3 py-4 sm:gap-3 sm:px-4 sm:py-6">
 							{displayMessages.length === 0 ? (
 								<div className="flex h-[calc(100vh-20rem)] flex-col items-center justify-center gap-2">
-									<Bot className="h-8 w-8 text-muted-foreground" />
-									<p className="text-center text-sm text-muted-foreground">
-										Como posso ajudar você hoje?
-									</p>
+									<Bot className="h-8 w-8 text-muted-foreground opacity-0" />
 								</div>
 							) : (
 								displayMessages.map((message, index) => (
@@ -134,7 +131,7 @@ export default function ChatPage() {
 										})}
 									>
 										{message.role !== 'user' && (
-											<Avatar className="mt-0.5 h-6 w-6 ring-2 ring-primary/10 dark:ring-slate-800 sm:h-8 sm:w-8">
+											<Avatar className="mt-0.5 h-6 w-6 ring-2 ring-primary/10 dark:ring-neutral-800 sm:h-8 sm:w-8">
 												<AvatarImage
 													src="/images/assistant-avatar.png"
 													alt="True Assistant"
@@ -149,7 +146,7 @@ export default function ChatPage() {
 												{
 													'bg-primary text-primary-foreground shadow-primary/10':
 														message.role === 'user',
-													'bg-muted shadow-slate-200 dark:shadow-slate-900':
+													'bg-muted shadow-neutral-200/50 dark:shadow-white/5':
 														message.role !== 'user',
 													'rounded-tl-sm': message.role !== 'user',
 													'rounded-tr-sm': message.role === 'user',
@@ -197,7 +194,7 @@ export default function ChatPage() {
 											</ReactMarkdown>
 										</div>
 										{message.role === 'user' && (
-											<Avatar className="mt-0.5 h-6 w-6 ring-2 ring-primary/10 dark:ring-slate-800 sm:h-8 sm:w-8">
+											<Avatar className="mt-0.5 h-6 w-6 ring-2 ring-primary/10 dark:ring-neutral-800 sm:h-8 sm:w-8">
 												<AvatarImage
 													src={user?.imageUrl}
 													alt={user?.fullName || ''}
@@ -224,14 +221,14 @@ export default function ChatPage() {
 					</ScrollArea>
 				</CardContent>
 
-				<CardFooter className="border-t border-border/50 bg-muted/50 px-3 py-4 dark:border-slate-800 sm:px-4">
+				<CardFooter className="border-t border-border/50 bg-muted/50 px-3 py-4 dark:border-neutral-800 sm:px-4">
 					<form onSubmit={onSubmit} className="flex w-full items-center gap-3">
 						<div className="relative flex-1">
 							<Input
 								value={input}
 								onChange={handleInputChange}
 								placeholder="Digite sua mensagem..."
-								className="h-11 w-full rounded-full bg-background px-4 py-2 pl-5 pr-12 text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-primary/20 dark:bg-slate-950 dark:shadow-slate-900/50"
+								className="h-11 w-full rounded-full bg-muted px-4 py-2 pl-5 pr-12 text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-primary/20 dark:bg-background dark:shadow-white/5"
 							/>
 							<Button
 								type="submit"
