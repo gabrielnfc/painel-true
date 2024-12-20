@@ -4,15 +4,19 @@ import { useChat, Message } from 'ai/react';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from './ChatMessage';
 import { useLocalStorage } from '@/hooks/use-local-storage';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
 
 const WELCOME_MESSAGE = {
 	id: 'welcome',
 	role: 'assistant' as const,
-	content:
-		'Olá! Bem-vindo ao chat da True Source. Estou aqui para ajudar com informações sobre pedidos, entregas e notas fiscais. Por favor, forneça o número do pedido para começar.',
+	content: `Olá! Bem-vindo ao True Assistant. Estou aqui para ajudar com informações sobre pedidos.
+🔍 ID do Pedido: Utilize o ID único do pedido para a busca (exemplo: 924611244).
+🔍 Número do Pedido: Utilize o número sequencial do pedido (exemplo: 176675).
+🔍 ID da Nota Fiscal: Utilize o ID único da nota fiscal associada ao pedido (exemplo: 924611536).
+🔍 Número da Ordem de Compra: Utilize o número da ordem de compra relacionada ao pedido (exemplo: 1480400978404-01).
+Por favor, forneça um dos números acima para começar.`,
 };
 
 export interface ChatProps extends React.ComponentProps<'div'> {
@@ -30,6 +34,8 @@ export function Chat({ id, initialMessages = [], className }: ChatProps) {
 		null
 	);
 	const [isInitializing, setIsInitializing] = useState(true);
+
+	const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
 	const {
 		messages,
@@ -72,6 +78,12 @@ export function Chat({ id, initialMessages = [], className }: ChatProps) {
 	});
 
 	useEffect(() => {
+		if (messagesEndRef.current) {
+			messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+		}
+	}, [messages]);
+
+	useEffect(() => {
 		setTimeout(() => {
 			setIsInitializing(false);
 		}, 1500);
@@ -104,7 +116,7 @@ export function Chat({ id, initialMessages = [], className }: ChatProps) {
 				</div>
 			</div>
 
-			<div className="chat-messages">
+			<div className="chat-messages" id="messages">
 				{messages.map((message, i) => (
 					<ChatMessage key={message.id || i} message={message} />
 				))}
@@ -127,6 +139,7 @@ export function Chat({ id, initialMessages = [], className }: ChatProps) {
 						</div>
 					</div>
 				)}
+				<div ref={messagesEndRef} />
 			</div>
 
 			<div className="chat-input-container">

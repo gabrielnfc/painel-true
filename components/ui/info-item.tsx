@@ -80,7 +80,7 @@ export function InfoItem({
 					href={formatUrl(value)}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium"
+					className="inline-flex items-center gap-2 text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
 				>
 					Rastrear Pedido
 					<ExternalLink className="h-4 w-4" />
@@ -96,7 +96,7 @@ export function InfoItem({
 					href={tinyUrl}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="text-primary hover:text-primary/80 hover:underline font-medium"
+					className="text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
 				>
 					{value}
 				</a>
@@ -114,7 +114,7 @@ export function InfoItem({
 							href={vtexUrl}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-primary hover:text-primary/80 hover:underline font-medium"
+							className="text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
 						>
 							{value}
 						</a>

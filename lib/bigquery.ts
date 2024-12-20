@@ -276,6 +276,115 @@ export class BigQueryService {
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
+
+  async getOrdersReport(startDate: string, endDate: string): Promise<OrderSearchResult[]> {
+    // Se estamos no processo de build, retorne um array vazio
+    if (process.env.VERCEL_ENV === 'build') {
+      console.log('Pulando busca no BigQuery durante o build');
+      return [];
+    }
+
+    // Inicializar BigQuery sob demanda
+    await this.initializeBigQuery();
+    
+    if (!this.bigquery) {
+      throw new Error('BigQuery client not initialized');
+    }
+
+    console.log('Iniciando busca de relatório no BigQuery:', { startDate, endDate });
+
+    const query = `
+      SELECT 
+        pedidos.data_pedido,
+        pedidos.data_entrega,
+        pedidos_status.dataFaturamento AS data_faturamento,
+        pedidos.situacao AS situacao_pedido,
+        pedidos.id AS id_pedido,
+        pedidos.id_nota_fiscal,
+        pedidos.numero AS numero_tiny,
+        pedidos.numero_ordem_compra,
+        nfes.numero AS numero_nota_fiscal,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.nome') AS nome_cliente,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cpf_cnpj') AS cpf,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.fone') AS telefone,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.email') AS email,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.uf') AS uf,
+        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cep') AS cep,
+        pedidos.itens AS produtos,
+        pedidos.nome_transportador AS transportadora,
+        pedidos.forma_frete,
+        pedidos.frete_por_conta,
+        pedidos.data_prevista,
+        separacoes.situacao AS situacao_separacao,
+        pedidos_status.dataExpedicao AS data_expedicao_status,
+        pedidos_status.dataColeta AS data_coleta_status,
+        etiquetas.status AS status_transportadora,
+        etiquetas.lastStatusDate AS ultima_atualizacao_status,
+        pedidos_status.transportador AS transportador_json_status
+      FROM 
+        \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
+      LEFT JOIN 
+        \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
+        ON pedidos.id = pedidos_status.idPedido
+      LEFT JOIN 
+        \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
+        ON pedidos.id = separacoes.idOrigem
+      LEFT JOIN 
+        \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
+        ON pedidos.id_nota_fiscal = nfes.id
+      LEFT JOIN 
+        \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
+        ON pedidos.id = etiquetas.idPedido
+      WHERE 
+        PARSE_DATE('%d/%m/%Y', pedidos.data_pedido) BETWEEN PARSE_DATE('%Y-%m-%d', @startDate) AND PARSE_DATE('%Y-%m-%d', @endDate)
+      ORDER BY 
+        pedidos.data_pedido DESC;
+    `;
+
+    const queryOptions = {
+      query,
+      params: {
+        startDate,
+        endDate,
+      },
+      timeout: this.queryTimeout,
+    };
+
+    console.log('Query do BigQuery:', query);
+    console.log('Parâmetros da query:', queryOptions.params);
+
+    try {
+      // Adiciona um timeout manual usando Promise.race
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('BigQuery query timeout'));
+        }, this.queryTimeout);
+      });
+
+      console.log('Executando query no BigQuery...');
+      const queryPromise = this.bigquery.query(queryOptions);
+      const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
+
+      console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
+      
+      return rows as OrderSearchResult[];
+    } catch (error) {
+      console.error('Erro detalhado no BigQuery:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Could not load the default credentials')) {
+          console.error('Erro de autenticação do BigQuery:', error);
+          throw new Error('BigQuery authentication failed');
+        }
+        if (error.message.includes('timeout')) {
+          console.error('Timeout na query do BigQuery:', error);
+          throw new Error('BigQuery query timeout');
+        }
+      }
+      
+      throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
+    }
+  }
 }
 
 // Não exporta mais uma instância singleton

@@ -1,56 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { BigQueryService } from '@/lib/bigquery';
+import { withRateLimit } from '@/lib/rate-limit';
 
-export const dynamic = 'force-dynamic';
-
-export async function GET(request: NextRequest) {
-  // Se estamos no processo de build, retorne um array vazio
-  if (process.env.VERCEL_ENV === 'build') {
-    console.log('Pulando busca no BigQuery durante o build');
-    return NextResponse.json({ results: [] });
-  }
-
+// Função principal do handler
+async function handler(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = req.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
     if (!startDate || !endDate) {
-      return NextResponse.json(
-        { error: 'Data inicial e final são obrigatórias' },
-        { status: 400 }
-      );
+      return new Response(JSON.stringify({ error: 'Missing date parameters' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    // Verificar se as credenciais do BigQuery estão disponíveis
-    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
-        !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
-        !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
-      console.error('Credenciais do BigQuery não encontradas');
-      return NextResponse.json(
-        { error: 'BigQuery credentials not configured' },
-        { status: 500 }
-      );
-    }
+    const bigquery = new BigQueryService();
+    const orders = await bigquery.getOrdersReport(startDate, endDate);
 
-    // Importação dinâmica do BigQueryService
-    const { BigQueryService } = await import('@/lib/bigquery');
-    const bigQueryService = new BigQueryService();
-
-    const results = await bigQueryService.getOrdersReport(startDate, endDate);
-
-    if (!results || results.length === 0) {
-      return NextResponse.json(
-        { error: 'Nenhum pedido encontrado no período' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ results });
+    return new Response(JSON.stringify({ orders }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    console.error('Erro ao gerar relatório:', error);
-    return NextResponse.json(
-      { error: 'Erro ao gerar relatório' },
-      { status: 500 }
-    );
+    console.error('Error generating report:', error);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
-} 
+}
+
+// Exporta o handler com rate limiting
+export const GET = withRateLimit(handler); 
