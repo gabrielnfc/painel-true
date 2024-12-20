@@ -1,18 +1,32 @@
 'use client';
 
-import { memo, FC, useMemo } from 'react';
-import { formatMessageWithLinks } from '@/app/lib/formatMessage';
+import { cn } from '@/lib/utils';
+import { CodeBlock } from './code-block';
+import ReactMarkdown from 'react-markdown';
 
-interface MarkdownProps {
+export interface MarkdownProps {
 	children: string;
+	className?: string;
 }
 
-export const Markdown: FC<MarkdownProps> = memo(({ children }) => {
-	const formattedContent = useMemo(
-		() => formatMessageWithLinks(children),
-		[children]
+export function Markdown({ children, className }: MarkdownProps) {
+	return (
+		<ReactMarkdown
+			className={cn('prose dark:prose-invert', className)}
+			components={{
+				code: ({ node, inline, className, children, ...props }) => {
+					if (inline) {
+						return (
+							<code className={className} {...props}>
+								{children}
+							</code>
+						);
+					}
+					return <CodeBlock content={String(children)} />;
+				},
+			}}
+		>
+			{children}
+		</ReactMarkdown>
 	);
-	return <>{formattedContent}</>;
-});
-
-Markdown.displayName = 'Markdown';
+}

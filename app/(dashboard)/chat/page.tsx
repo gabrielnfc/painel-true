@@ -1,7 +1,7 @@
 'use client';
 
 import { useUser } from '@/hooks/useUser';
-import { Chat } from './components/Chat';
+import { Chat } from './components/chat';
 import { nanoid } from 'nanoid';
 
 export default function ChatPage() {
