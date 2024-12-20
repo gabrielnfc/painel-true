@@ -61,84 +61,29 @@ export interface OrderSearchResult {
 }
 
 export class BigQueryService {
-  private bigquery: BigQuery | null = null;
-  private readonly queryTimeout = 30000; // 30 segundos de timeout
+  private bigquery: BigQuery;
 
-  constructor() {
-    // Não inicializa o BigQuery no construtor
-    // A inicialização será feita sob demanda
-  }
+  constructor(config?: BigQueryConfig) {
+    const projectId = config?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID;
+    const credentials = config?.credentials || {
+      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+      private_key: (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    };
 
-  private async initializeBigQuery() {
-    // Se já está inicializado, retorna
-    if (this.bigquery) {
-      console.log('BigQuery já está inicializado');
-      return;
+    if (!projectId || !credentials.client_email || !credentials.private_key) {
+      throw new Error('Missing required BigQuery credentials');
     }
 
-    // Se estamos no processo de build, não inicialize o BigQuery
-    if (process.env.VERCEL_ENV === 'build') {
-      console.log('Pulando inicialização do BigQuery durante o build');
-      return;
-    }
-
-    console.log('Iniciando inicialização do BigQueryService');
-    
-    try {
-      // Verificar se as credenciais estão disponíveis
-      if (!process.env.GOOGLE_CLOUD_PROJECT_ID || 
-          !process.env.GOOGLE_CLOUD_CLIENT_EMAIL || 
-          !process.env.GOOGLE_CLOUD_PRIVATE_KEY) {
-        console.error('Credenciais do BigQuery não encontradas no ambiente');
-        throw new Error('BigQuery credentials not found in environment');
-      }
-
-      // Log detalhado da validação das credenciais
-      const validationStatus = {
-        hasProjectId: Boolean(process.env.GOOGLE_CLOUD_PROJECT_ID),
-        hasClientEmail: Boolean(process.env.GOOGLE_CLOUD_CLIENT_EMAIL),
-        hasPrivateKey: Boolean(process.env.GOOGLE_CLOUD_PRIVATE_KEY),
-      };
-
-      console.log('Status de validação das credenciais:', validationStatus);
-
-      if (!validationStatus.hasProjectId || !validationStatus.hasClientEmail || !validationStatus.hasPrivateKey) {
-        throw new Error('Credenciais do BigQuery incompletas');
-      }
-
-      // Inicializar o cliente do BigQuery com as credenciais
-      this.bigquery = new BigQuery({
-        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-        credentials: {
-          client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        },
-      });
-
-      console.log('BigQueryService inicializado com sucesso para o projeto:', process.env.GOOGLE_CLOUD_PROJECT_ID);
-    } catch (error) {
-      console.error('Erro ao inicializar BigQueryService:', error);
-      throw error;
-    }
+    this.bigquery = new BigQuery({
+      projectId,
+      credentials,
+    });
   }
 
   async searchOrder(
     searchValue: string,
     options: SearchOptions = {}
   ): Promise<OrderSearchResult[]> {
-    // Se estamos no processo de build, retorne um array vazio
-    if (process.env.VERCEL_ENV === 'build') {
-      console.log('Pulando busca no BigQuery durante o build');
-      return [];
-    }
-
-    // Inicializar BigQuery sob demanda
-    await this.initializeBigQuery();
-    
-    if (!this.bigquery) {
-      throw new Error('BigQuery client not initialized');
-    }
-
     console.log('Iniciando busca no BigQuery:', { searchValue, options });
 
     const {
@@ -229,81 +174,45 @@ export class BigQueryService {
         pageSize,
         offset,
       },
-      timeout: this.queryTimeout,
     };
 
     console.log('Query do BigQuery:', query);
     console.log('Parâmetros da query:', queryOptions.params);
 
     try {
-      // Adiciona um timeout manual usando Promise.race
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('BigQuery query timeout'));
-        }, this.queryTimeout);
-      });
-
-      console.log('Executando query no BigQuery...');
-      const queryPromise = this.bigquery.query(queryOptions);
-      const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
-
-      console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
-      
-      if (rows?.length > 0) {
-        console.log('Primeiro resultado:', {
-          id_pedido: rows[0].id_pedido,
-          numero_pedido: rows[0].numero_pedido,
-          situacao_pedido: rows[0].situacao_pedido
-        });
-      }
-
+      const [rows] = await this.bigquery.query(queryOptions);
+      console.log('Resultados encontrados:', rows?.length || 0);
       return rows as OrderSearchResult[];
     } catch (error) {
-      console.error('Erro detalhado no BigQuery:', error);
-      
-      // Verifica se é um erro de autenticação
-      if (error instanceof Error) {
-        if (error.message.includes('Could not load the default credentials')) {
-          console.error('Erro de autenticação do BigQuery:', error);
-          throw new Error('BigQuery authentication failed');
-        }
-        if (error.message.includes('timeout')) {
-          console.error('Timeout na query do BigQuery:', error);
-          throw new Error('BigQuery query timeout');
-        }
-      }
-      
+      console.error('Erro no BigQuery:', error);
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
 
   async getOrdersReport(startDate: string, endDate: string): Promise<OrderSearchResult[]> {
-    // Se estamos no processo de build, retorne um array vazio
-    if (process.env.VERCEL_ENV === 'build') {
-      console.log('Pulando busca no BigQuery durante o build');
-      return [];
-    }
-
-    // Inicializar BigQuery sob demanda
-    await this.initializeBigQuery();
-    
-    if (!this.bigquery) {
-      throw new Error('BigQuery client not initialized');
-    }
-
-    console.log('Iniciando busca de relatório no BigQuery:', { startDate, endDate });
+    console.log('Iniciando busca de relatório:', { startDate, endDate });
 
     const query = `
       SELECT 
-        pedidos.data_pedido,
-        pedidos.data_entrega,
-        pedidos_status.dataFaturamento AS data_faturamento,
-        pedidos.situacao AS situacao_pedido,
+        pedidos.data_pedido AS data_pedido,
+        pedidos.data_entrega AS data_entrega,
         pedidos.id AS id_pedido,
+        pedidos.numero AS numero_pedido,
         pedidos.id_nota_fiscal,
-        pedidos.numero AS numero_tiny,
         pedidos.numero_ordem_compra,
-        nfes.numero AS numero_nota_fiscal,
+        pedidos.total_produtos,
+        pedidos.total_pedido,
+        pedidos.valor_desconto,
+        pedidos.deposito,
+        pedidos.frete_por_conta,
+        pedidos.codigo_rastreamento,
+        pedidos.nome_transportador AS transportadora,
+        pedidos.forma_frete,
+        pedidos.data_envio,
+        pedidos.situacao AS situacao_pedido,
+        pedidos.data_prevista,
+        pedidos.url_rastreamento,
+        pedidos.cliente AS cliente_json,
         JSON_EXTRACT_SCALAR(pedidos.cliente, '$.nome') AS nome_cliente,
         JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cpf_cnpj') AS cpf,
         JSON_EXTRACT_SCALAR(pedidos.cliente, '$.fone') AS telefone,
@@ -311,16 +220,27 @@ export class BigQueryService {
         JSON_EXTRACT_SCALAR(pedidos.cliente, '$.uf') AS uf,
         JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cep') AS cep,
         pedidos.itens AS produtos,
-        pedidos.nome_transportador AS transportadora,
-        pedidos.forma_frete,
-        pedidos.frete_por_conta,
-        pedidos.data_prevista,
-        separacoes.situacao AS situacao_separacao,
+        pedidos_status.dataPedido AS data_pedido_status,
+        pedidos_status.dataFaturamento AS data_faturamento_status,
+        pedidos_status.situacaoPedido AS situacao_pedido_status,
+        pedidos_status.nome AS nome_status,
+        pedidos_status.telefone AS telefone_status,
+        pedidos_status.email AS email_status,
+        pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
+        pedidos_status.statusTransportadora AS status_transportadora_status,
         pedidos_status.dataExpedicao AS data_expedicao_status,
         pedidos_status.dataColeta AS data_coleta_status,
+        pedidos_status.transportador AS transportador_json_status,
+        pedidos_status.formaEnvio AS forma_envio_status,
+        separacoes.situacao AS situacao_separacao,
+        nfes.numero AS numero_nota,
+        nfes.chaveAcesso AS chave_acesso_nota,
+        nfes.valor AS valor_nota,
         etiquetas.status AS status_transportadora,
         etiquetas.lastStatusDate AS ultima_atualizacao_status,
-        pedidos_status.transportador AS transportador_json_status
+        etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
+        etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
+        pedidos.obs_interna AS obs_interna
       FROM 
         \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
       LEFT JOIN 
@@ -336,9 +256,8 @@ export class BigQueryService {
         \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
         ON pedidos.id = etiquetas.idPedido
       WHERE 
-        PARSE_DATE('%d/%m/%Y', pedidos.data_pedido) BETWEEN PARSE_DATE('%Y-%m-%d', @startDate) AND PARSE_DATE('%Y-%m-%d', @endDate)
-      ORDER BY 
-        pedidos.data_pedido DESC;
+        PARSE_DATE('%d/%m/%Y', pedidos.data_pedido) BETWEEN DATE(@startDate) AND DATE(@endDate)
+      ORDER BY pedidos.data_pedido DESC;
     `;
 
     const queryOptions = {
@@ -347,51 +266,21 @@ export class BigQueryService {
         startDate,
         endDate,
       },
-      timeout: this.queryTimeout,
     };
 
     console.log('Query do BigQuery:', query);
     console.log('Parâmetros da query:', queryOptions.params);
 
     try {
-      // Adiciona um timeout manual usando Promise.race
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('BigQuery query timeout'));
-        }, this.queryTimeout);
-      });
-
-      console.log('Executando query no BigQuery...');
-      const queryPromise = this.bigquery.query(queryOptions);
-      const [rows] = await Promise.race([queryPromise, timeoutPromise]) as [OrderSearchResult[]];
-
-      console.log('Query executada com sucesso. Resultados encontrados:', rows?.length || 0);
-      
+      const [rows] = await this.bigquery.query(queryOptions);
+      console.log('Resultados encontrados:', rows?.length || 0);
       return rows as OrderSearchResult[];
     } catch (error) {
-      console.error('Erro detalhado no BigQuery:', error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Could not load the default credentials')) {
-          console.error('Erro de autenticação do BigQuery:', error);
-          throw new Error('BigQuery authentication failed');
-        }
-        if (error.message.includes('timeout')) {
-          console.error('Timeout na query do BigQuery:', error);
-          throw new Error('BigQuery query timeout');
-        }
-      }
-      
+      console.error('Erro no BigQuery:', error);
       throw new Error(error instanceof Error ? error.message : 'Erro ao consultar BigQuery');
     }
   }
 }
 
-// Não exporta mais uma instância singleton
-// export const bigQueryService = new BigQueryService();
-
-// Função de busca exportada agora cria uma nova instância
-export async function searchOrders(orderNumber: string) {
-  const service = new BigQueryService();
-  return service.searchOrder(orderNumber);
-}
+// Export a singleton instance
+export const bigQueryService = new BigQueryService();

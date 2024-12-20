@@ -9,7 +9,10 @@ async function handler(req: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
+    console.log('Recebendo requisição de relatório:', { startDate, endDate });
+
     if (!startDate || !endDate) {
+      console.error('Parâmetros de data faltando');
       return new Response(JSON.stringify({ error: 'Missing date parameters' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -17,18 +20,29 @@ async function handler(req: NextRequest) {
     }
 
     const bigquery = new BigQueryService();
-    const orders = await bigquery.getOrdersReport(startDate, endDate);
+    const results = await bigquery.getOrdersReport(startDate, endDate);
 
-    return new Response(JSON.stringify({ orders }), {
+    console.log('Resultados obtidos:', { count: results.length });
+
+    return new Response(JSON.stringify({ results }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store'
+      },
     });
   } catch (error) {
     console.error('Error generating report:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Internal server error',
+        details: error instanceof Error ? error.stack : undefined
+      }), 
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 }
 

@@ -1,0 +1,4 @@
+1|1|<TooltipWrapper content={order.email || 'N/A'}>
+2|2|<span className="truncate max-w-[150px] block">
+3|3|{order.email || 'N/A'}
+</rewritten_file> 

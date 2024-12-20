@@ -1,9 +1,10 @@
 'use client';
 
-import { Message } from 'ai';
 import { cn } from '@/lib/utils';
-import { Markdown } from './markdown';
-import { IconUser, IconBot } from './icons';
+import { Message } from 'ai';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import ReactMarkdown from 'react-markdown';
 
 export interface ChatMessageProps {
 	message: Message;
@@ -11,22 +12,21 @@ export interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
 	return (
-		<div className={cn('group relative mb-4 flex items-start md:-ml-12')}>
-			<div
+		<div className="flex flex-col gap-2">
+			<ReactMarkdown
 				className={cn(
-					'flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md border shadow',
+					'prose break-words prose-p:leading-relaxed prose-pre:p-0',
 					message.role === 'user'
-						? 'bg-background'
-						: 'bg-primary text-primary-foreground'
+						? 'prose-invert prose-p:text-white prose-strong:text-white prose-a:text-white'
+						: 'dark:prose-invert'
 				)}
 			>
-				{message.role === 'user' ? <IconUser /> : <IconBot />}
-			</div>
-			<div className="ml-4 flex-1 space-y-2 overflow-hidden px-1">
-				<Markdown className="prose break-words dark:prose-invert prose-p:leading-relaxed prose-pre:p-0">
-					{message.content}
-				</Markdown>
-			</div>
+				{message.content}
+			</ReactMarkdown>
+
+			<span className="text-[11px] text-muted-foreground">
+				{format(new Date(), 'HH:mm', { locale: ptBR })}
+			</span>
 		</div>
 	);
 }

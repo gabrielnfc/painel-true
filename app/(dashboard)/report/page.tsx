@@ -19,7 +19,7 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { InfoItem } from '@/components/ui/info-item';
 import { TooltipWrapper } from '@/components/ui/tooltip-content';
@@ -28,30 +28,52 @@ import ExcelJS from 'exceljs';
 interface ReportResult {
 	data_pedido: string;
 	data_entrega: string;
-	data_faturamento: string;
-	situacao_pedido: string;
 	id_pedido: string;
+	numero_pedido: string;
 	id_nota_fiscal: string;
-	numero_tiny: string;
 	numero_ordem_compra: string;
-	numero_nota_fiscal: string;
-	nome_cliente: string;
-	cpf: string;
-	telefone: string;
-	email: string;
-	uf: string;
-	cep: string;
-	produtos: string;
-	transportadora: string;
-	forma_frete: string;
+	total_produtos: string;
+	total_pedido: string;
+	valor_desconto: string;
+	deposito: string;
 	frete_por_conta: string;
+	codigo_rastreamento: string;
+	nome_transportador: string;
+	forma_frete: string;
+	data_envio: string;
+	situacao_pedido: string;
 	data_prevista: string;
-	situacao_separacao: string | null;
+	url_rastreamento: string;
+	cliente_json: string;
+	itens_pedido: string;
+	data_pedido_status: string;
+	data_faturamento_status: string;
+	situacao_pedido_status: string;
+	nome_status: string;
+	telefone_status: string;
+	email_status: string;
+	tipo_envio_transportadora_status: string;
+	status_transportadora_status: string;
 	data_expedicao_status: string;
 	data_coleta_status: string;
+	transportador_json_status: string;
+	forma_envio_status: string;
+	situacao_separacao: string | null;
+	numero_nota: string;
+	chave_acesso_nota: string;
+	valor_nota: string;
 	status_transportadora: string;
 	ultima_atualizacao_status: string;
-	transportador_json_status: string;
+	codigo_rastreamento_etiqueta: string | null;
+	url_rastreamento_etiqueta: string | null;
+	obs_interna: string;
+	nome_cliente?: string;
+	cpf?: string;
+	telefone?: string;
+	email?: string;
+	uf?: string;
+	cep?: string;
+	produtos?: string;
 }
 
 // Adicionar funções auxiliares para transformação dos códigos
@@ -114,13 +136,16 @@ export default function ReportPage() {
 	const [rowsPerPage, setRowsPerPage] = useState<number>(10);
 	const [currentPage, setCurrentPage] = useState(1);
 
-	// Calcular resultados paginados
-	const paginatedResults = results.slice(
-		(currentPage - 1) * rowsPerPage,
-		currentPage * rowsPerPage
-	);
+	// Calcular resultados paginados com verificação de segurança
+	const paginatedResults =
+		results?.length > 0
+			? results.slice(
+					(currentPage - 1) * rowsPerPage,
+					currentPage * rowsPerPage
+			  )
+			: [];
 
-	const totalPages = Math.ceil(results.length / rowsPerPage);
+	const totalPages = Math.ceil((results?.length || 0) / rowsPerPage);
 
 	// Resetar página atual quando mudar número de linhas por página
 	const handleRowsPerPageChange = (value: number) => {
@@ -164,6 +189,7 @@ export default function ReportPage() {
 		}
 
 		setIsLoading(true);
+		setResults([]); // Limpa os resultados anteriores
 
 		try {
 			// Format dates to YYYY-MM-DD for BigQuery
@@ -172,30 +198,64 @@ export default function ReportPage() {
 				.split('T')[0];
 			const formattedEndDate = new Date(endDate).toISOString().split('T')[0];
 
+			console.log('Iniciando busca...', {
+				formattedStartDate,
+				formattedEndDate,
+			});
+
 			const response = await fetch(
-				`/api/orders/report?startDate=${formattedStartDate}&endDate=${formattedEndDate}`
+				`/api/orders/report?startDate=${formattedStartDate}&endDate=${formattedEndDate}`,
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					cache: 'no-store',
+				}
 			);
+
+			console.log('Status da resposta:', response.status);
 			const data = await response.json();
+			console.log('Dados recebidos:', data);
 
 			if (!response.ok) {
 				throw new Error(data.error || 'Erro ao buscar relatório');
 			}
 
+			if (!data.results || !Array.isArray(data.results)) {
+				console.error('Formato de dados inválido:', data);
+				throw new Error('Formato de dados inválido');
+			}
+
+			console.log('Total de resultados:', data.results.length);
+
+			// Verifica se há dados antes de atualizar o estado
+			if (data.results.length === 0) {
+				toast({
+					title: 'Aviso',
+					description: 'Nenhum resultado encontrado para o período selecionado',
+					variant: 'default',
+				});
+			}
+
 			setResults(data.results);
+			setCurrentPage(1); // Reset para a primeira página
 		} catch (error) {
+			console.error('Erro detalhado:', error);
 			toast({
 				title: 'Erro',
 				description:
 					error instanceof Error ? error.message : 'Erro ao gerar relatório',
 				variant: 'destructive',
 			});
+			setResults([]);
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
 	const handleExportExcel = () => {
-		if (results.length === 0) {
+		if (!results?.length) {
 			toast({
 				title: 'Erro',
 				description: 'Não há dados para exportar',
@@ -237,10 +297,13 @@ export default function ReportPage() {
 		];
 
 		// Adiciona os dados
-		results.forEach(row => {
+		results.forEach((row) => {
 			worksheet.addRow({
 				...row,
-				produtos: formatProdutos(row.produtos).replace(/\n/g, ', '),
+				produtos: (formatProdutos(row.produtos || '') || '').replace(
+					/\n/g,
+					', '
+				),
 				transportadora: getTransportadoraNome(row.transportador_json_status),
 				frete_por_conta: formatFretePorConta(row.frete_por_conta),
 				situacao_separacao: formatSituacaoSeparacao(row.situacao_separacao),
@@ -304,14 +367,14 @@ export default function ReportPage() {
 							{isLoading ? <Spinner className="h-4 w-4 mr-2" /> : null}
 							Gerar Relatório
 						</Button>
-						{results.length > 0 && (
+						{results?.length > 0 && (
 							<Button onClick={handleExportExcel} variant="outline">
 								Exportar Excel
 							</Button>
 						)}
 					</div>
 
-					{results.length > 0 && (
+					{results?.length > 0 && (
 						<div className="mt-6">
 							<div className="flex items-center justify-between mb-4">
 								<div className="flex items-center gap-2">
@@ -320,7 +383,9 @@ export default function ReportPage() {
 									</span>
 									<Select
 										value={rowsPerPage.toString()}
-										onValueChange={(value) => handleRowsPerPageChange(Number(value))}
+										onValueChange={(value) =>
+											handleRowsPerPageChange(Number(value))
+										}
 									>
 										<SelectTrigger className="w-[80px]">
 											<SelectValue placeholder="10" />
@@ -333,7 +398,7 @@ export default function ReportPage() {
 									</Select>
 								</div>
 								<div className="text-sm text-muted-foreground">
-									Total de registros: {results.length}
+									Total de registros: {results?.length || 0}
 								</div>
 							</div>
 
@@ -360,7 +425,7 @@ export default function ReportPage() {
 														ID Pedido
 													</TableHead>
 													<TableHead className="bg-muted/50 font-semibold">
-														Número Tiny
+														Número Pedido
 													</TableHead>
 
 													{/* Grupo: Informações Fiscais */}
@@ -441,7 +506,7 @@ export default function ReportPage() {
 														</TableCell>
 														<TableCell>{order.data_entrega || 'N/A'}</TableCell>
 														<TableCell>
-															{order.data_faturamento || 'N/A'}
+															{order.data_faturamento_status || 'N/A'}
 														</TableCell>
 														<TableCell>
 															<InfoItem
@@ -457,7 +522,7 @@ export default function ReportPage() {
 																isOrderId={true}
 															/>
 														</TableCell>
-														<TableCell>{order.numero_tiny}</TableCell>
+														<TableCell>{order.numero_pedido}</TableCell>
 
 														{/* Grupo: Informações Fiscais */}
 														<TableCell>
@@ -467,23 +532,25 @@ export default function ReportPage() {
 																</span>
 															</TooltipWrapper>
 														</TableCell>
-														<TableCell>{order.numero_nota_fiscal}</TableCell>
+														<TableCell>{order.numero_nota}</TableCell>
 														<TableCell>{order.numero_ordem_compra}</TableCell>
 
 														{/* Grupo: Informações do Cliente */}
 														<TableCell className="font-medium">
-															<TooltipWrapper content={order.nome_cliente}>
+															<TooltipWrapper
+																content={order.nome_cliente || 'N/A'}
+															>
 																<span className="truncate max-w-[200px] block">
-																	{order.nome_cliente}
+																	{order.nome_cliente || 'N/A'}
 																</span>
 															</TooltipWrapper>
 														</TableCell>
 														<TableCell>{order.cpf}</TableCell>
 														<TableCell>{order.telefone}</TableCell>
 														<TableCell>
-															<TooltipWrapper content={order.email}>
+															<TooltipWrapper content={order.email || 'N/A'}>
 																<span className="truncate max-w-[150px] block">
-																	{order.email}
+																	{order.email || 'N/A'}
 																</span>
 															</TooltipWrapper>
 														</TableCell>
@@ -492,19 +559,25 @@ export default function ReportPage() {
 
 														{/* Grupo: Produtos e Frete */}
 														<TableCell>
-															<TooltipWrapper 
-																content={formatProdutos(order.produtos)}
+															<TooltipWrapper
+																content={formatProdutos(order.itens_pedido)}
 																side="left"
 															>
 																<span className="truncate max-w-[300px] block">
-																	{formatProdutos(order.produtos)}
+																	{formatProdutos(order.itens_pedido)}
 																</span>
 															</TooltipWrapper>
 														</TableCell>
 														<TableCell>
-															<TooltipWrapper content={getTransportadoraNome(order.transportador_json_status)}>
+															<TooltipWrapper
+																content={getTransportadoraNome(
+																	order.transportador_json_status
+																)}
+															>
 																<span className="truncate max-w-[150px] block">
-																	{getTransportadoraNome(order.transportador_json_status)}
+																	{getTransportadoraNome(
+																		order.transportador_json_status
+																	)}
 																</span>
 															</TooltipWrapper>
 														</TableCell>
@@ -526,7 +599,9 @@ export default function ReportPage() {
 																</span>
 															</TooltipWrapper>
 														</TableCell>
-														<TableCell>{order.data_prevista || 'N/A'}</TableCell>
+														<TableCell>
+															{order.data_prevista || 'N/A'}
+														</TableCell>
 
 														{/* Grupo: Status e Separação */}
 														<TableCell>
@@ -573,7 +648,9 @@ export default function ReportPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+										onClick={() =>
+											setCurrentPage((prev) => Math.max(prev - 1, 1))
+										}
 										disabled={currentPage === 1}
 									>
 										Anterior
@@ -584,7 +661,9 @@ export default function ReportPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+										onClick={() =>
+											setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+										}
 										disabled={currentPage === totalPages}
 									>
 										Próxima

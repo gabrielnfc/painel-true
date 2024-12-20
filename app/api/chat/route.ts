@@ -179,7 +179,7 @@ IMPORTANTE: Formate os dados acima EXATAMENTE seguindo o template fornecido no i
   }
 
   const response = await openai.createChatCompletion({
-    model: 'gpt-4',
+    model: 'gpt-3.5-turbo',
     temperature: 0.1,
     stream: true,
     max_tokens: MAX_TOKENS,
