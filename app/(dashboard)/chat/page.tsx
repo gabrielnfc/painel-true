@@ -37,10 +37,11 @@ Como posso ajudar você hoje?`,
 };
 
 export default function ChatPage() {
-	const { messages, input, handleInputChange, handleSubmit } = useChat({
-		initialMessages: [],
-		api: '/api/chat',
-	});
+	const { messages, input, handleInputChange, handleSubmit, isLoading } =
+		useChat({
+			initialMessages: [],
+			api: '/api/chat',
+		});
 	const { user } = useUser();
 	const [isTyping, setIsTyping] = useState(false);
 	const [showWelcome, setShowWelcome] = useState(false);
@@ -65,18 +66,15 @@ export default function ChatPage() {
 		if (messagesEndRef.current) {
 			messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
 		}
-	}, [messages, isTyping]);
+	}, [messages, isTyping, isLoading]);
 
 	const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		if (input.trim()) {
 			try {
-				setIsTyping(true);
 				await handleSubmit(e);
 			} catch (error) {
 				console.error('Erro ao enviar mensagem:', error);
-			} finally {
-				setIsTyping(false);
 			}
 		}
 	};
@@ -86,10 +84,10 @@ export default function ChatPage() {
 		: messages;
 
 	return (
-		<div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-2 py-4 sm:px-4">
-			<Card className="w-full max-w-[1200px] rounded-lg border-2 bg-background shadow-[0_2px_40px_-12px] shadow-primary/10 dark:border-neutral-800 dark:shadow-white/5">
-				<CardHeader className="border-b border-border/50 bg-muted/50 px-3 py-3 dark:border-neutral-800 sm:px-4">
-					<CardTitle className="flex items-center gap-3">
+		<div className="flex min-h-[calc(100vh-4rem)] sm:items-center sm:justify-center px-0 py-0 sm:px-4 sm:py-4">
+			<Card className="w-full h-[calc(100vh-4rem)] sm:h-auto sm:max-w-[1200px] rounded-none sm:rounded-lg border-0 sm:border-2 bg-background shadow-none sm:shadow-[0_2px_40px_-12px] shadow-primary/10 dark:border-neutral-800 dark:shadow-white/5">
+				<CardHeader className="border-b border-border/50 bg-muted/50 px-3 py-2 sm:py-3 dark:border-neutral-800 sm:px-4">
+					<CardTitle className="flex items-center gap-2 sm:gap-3">
 						<div className="relative">
 							<Avatar className="h-8 w-8 ring-2 ring-primary/10 dark:ring-neutral-800 sm:h-10 sm:w-10">
 								<AvatarImage
@@ -99,7 +97,7 @@ export default function ChatPage() {
 								/>
 								<AvatarFallback>TA</AvatarFallback>
 							</Avatar>
-							<div className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500 sm:h-3 sm:w-3">
+							<div className="absolute bottom-0 right-0 h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full border-2 border-background bg-green-500 sm:h-3 sm:w-3">
 								<div className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
 							</div>
 						</div>
@@ -115,10 +113,10 @@ export default function ChatPage() {
 				</CardHeader>
 
 				<CardContent className="flex flex-col space-y-4 bg-background/50 p-0 dark:bg-background/50">
-					<ScrollArea className="h-[calc(100vh-16rem)] w-full">
-						<div className="flex flex-col gap-2 px-3 py-4 sm:gap-3 sm:px-4 sm:py-6">
+					<ScrollArea className="h-[calc(100vh-12rem)] sm:h-[calc(100vh-16rem)] w-full">
+						<div className="flex flex-col gap-2 px-3 py-3 sm:gap-3 sm:px-4 sm:py-6">
 							{displayMessages.length === 0 ? (
-								<div className="flex h-[calc(100vh-20rem)] flex-col items-center justify-center gap-2">
+								<div className="flex h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)] flex-col items-center justify-center gap-2">
 									<Bot className="h-8 w-8 text-muted-foreground opacity-0" />
 								</div>
 							) : (
@@ -142,7 +140,7 @@ export default function ChatPage() {
 										)}
 										<div
 											className={cn(
-												'relative max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-md sm:max-w-[75%] sm:px-4 sm:py-3',
+												'relative max-w-[85%] rounded-2xl px-2.5 py-2 text-sm shadow-md sm:max-w-[75%] sm:px-4 sm:py-3',
 												{
 													'bg-primary text-primary-foreground shadow-primary/10':
 														message.role === 'user',
@@ -155,7 +153,7 @@ export default function ChatPage() {
 										>
 											<ReactMarkdown
 												className={cn(
-													'prose prose-sm break-words whitespace-pre-wrap',
+													'prose prose-sm break-words whitespace-pre-wrap text-[13px] sm:text-sm',
 													message.role === 'user'
 														? 'prose-invert prose-p:leading-relaxed prose-pre:p-0'
 														: 'dark:prose-invert prose-p:leading-relaxed prose-pre:p-0'
@@ -208,12 +206,23 @@ export default function ChatPage() {
 									</div>
 								))
 							)}
-							{isTyping && (
-								<div className="flex items-center gap-2 text-muted-foreground">
-									<Bot className="h-3 w-3 animate-pulse sm:h-4 sm:w-4" />
-									<span className="text-xs sm:text-sm">
-										True Assistant está digitando...
-									</span>
+							{(isTyping || isLoading) && (
+								<div className="flex items-start gap-2 sm:gap-3">
+									<Avatar className="mt-0.5 h-6 w-6 ring-2 ring-primary/10 dark:ring-neutral-800 sm:h-8 sm:w-8">
+										<AvatarImage
+											src="/images/assistant-avatar.png"
+											alt="True Assistant"
+											className="object-cover"
+										/>
+										<AvatarFallback>TA</AvatarFallback>
+									</Avatar>
+									<div className="relative max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-md sm:max-w-[75%] sm:px-4 sm:py-3 bg-muted shadow-neutral-200/50 dark:shadow-white/5 rounded-tl-sm">
+										<div className="flex items-center gap-1">
+											<span className="h-2 w-2 rounded-full bg-primary/40 animate-[bounce_1.4s_infinite_.2s]" />
+											<span className="h-2 w-2 rounded-full bg-primary/40 animate-[bounce_1.4s_infinite_.4s]" />
+											<span className="h-2 w-2 rounded-full bg-primary/40 animate-[bounce_1.4s_infinite_.6s]" />
+										</div>
+									</div>
 								</div>
 							)}
 							<div ref={messagesEndRef} />
@@ -221,26 +230,29 @@ export default function ChatPage() {
 					</ScrollArea>
 				</CardContent>
 
-				<CardFooter className="border-t border-border/50 bg-muted/50 px-3 py-4 dark:border-neutral-800 sm:px-4">
-					<form onSubmit={onSubmit} className="flex w-full items-center gap-3">
+				<CardFooter className="border-t border-border/50 bg-muted/50 px-3 py-3 sm:py-4 dark:border-neutral-800 sm:px-4">
+					<form
+						onSubmit={onSubmit}
+						className="flex w-full items-center gap-2 sm:gap-3"
+					>
 						<div className="relative flex-1">
 							<Input
 								value={input}
 								onChange={handleInputChange}
 								placeholder="Digite sua mensagem..."
-								className="h-11 w-full rounded-full bg-muted px-4 py-2 pl-5 pr-12 text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-primary/20 dark:bg-background dark:shadow-white/5"
+								className="h-10 sm:h-11 w-full rounded-full bg-muted px-4 py-2 pl-4 pr-12 text-[13px] sm:text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-primary/20 dark:bg-background dark:shadow-white/5"
 							/>
 							<Button
 								type="submit"
 								size="icon"
 								variant="ghost"
 								className={cn(
-									'absolute right-1.5 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full',
+									'absolute right-1 sm:right-1.5 top-1/2 h-8 w-8 sm:h-9 sm:w-9 -translate-y-1/2 rounded-full',
 									!input.trim() && 'text-muted-foreground',
 									input.trim() &&
 										'text-primary hover:text-primary hover:bg-primary/10'
 								)}
-								disabled={isTyping || !input.trim()}
+								disabled={isTyping || isLoading || !input.trim()}
 							>
 								<Send className="h-4 w-4" />
 								<span className="sr-only">Enviar mensagem</span>
