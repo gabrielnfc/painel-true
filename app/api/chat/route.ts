@@ -194,11 +194,24 @@ async function handler(req: NextRequest) {
   // Se não tem cache válido ou se é uma nova solicitação de pedido, busca o pedido
   if (!orderData || (lastUserMessage && lastUserMessage.content.toLowerCase().includes('pedido'))) {
     if (lastUserMessage) {
-      // Expressão regular mais flexível para encontrar números de pedido
-      const orderIdMatch = lastUserMessage.content.match(/(?:pedido\s*)?(\d{5,}(?:-\d+)?)/i);
+      // Expressão regular mais flexível para encontrar diferentes formatos de identificação
+      const searchPatterns = [
+        /\b\d{5,}(?:-\d+)?\b/, // Número do pedido ou ID
+        /\b\d{13}-\d{2}\b/,    // Formato ordem de compra (ex: 1485670996616-01)
+      ];
       
-      if (orderIdMatch) {
-        const orderId = orderIdMatch[1];
+      let orderId = null;
+      
+      // Tenta encontrar um match com qualquer um dos padrões
+      for (const pattern of searchPatterns) {
+        const match = lastUserMessage.content.match(pattern);
+        if (match) {
+          orderId = match[0];
+          break;
+        }
+      }
+      
+      if (orderId) {
         console.log('Buscando pedido:', orderId);
         
         // Se o pedido solicitado é diferente do cache atual, busca novo pedido
