@@ -59,7 +59,7 @@ export default function ChatPage() {
 		};
 
 		simulateTyping();
-	}, [messages.length]);
+	}, [messages.length, showWelcome]);
 
 	// Scroll para o final quando houver novas mensagens
 	useEffect(() => {
