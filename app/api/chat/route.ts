@@ -41,6 +41,35 @@ interface ProcessedOrder {
   [key: string]: any;
 }
 
+interface OrderCache {
+  orderId: string;
+  data: ProcessedOrder;
+  timestamp: number;
+}
+
+let orderCache: OrderCache | null = null;
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutos em milissegundos
+
+// Função para verificar se o cache é válido e relevante
+function isValidCache(cache: OrderCache | null, messages?: any[]): boolean {
+  if (!cache) return false;
+  const now = Date.now();
+  
+  // Verifica validade temporal
+  if (now - cache.timestamp >= CACHE_DURATION) return false;
+  
+  // Se não foram fornecidas mensagens, retorna apenas a validade temporal
+  if (!messages) return true;
+  
+  // Verifica relevância para a conversa atual
+  const recentMessages = messages.slice(-5);
+  return recentMessages.some(msg => 
+    msg.content.includes(cache.orderId) || 
+    msg.content.toLowerCase().includes('pedido') ||
+    msg.content.match(/\b\d{5,}(?:-\d+)?\b/)
+  );
+}
+
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -48,10 +77,10 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 // Configurações para otimização de tokens
-const MAX_MESSAGES_HISTORY = 10; // Limite de mensagens no histórico
-const MAX_MESSAGE_LENGTH = 1000; // Limite de caracteres por mensagem
-const MAX_TOKENS = 4000; // Limite de tokens para o modelo
-const MAX_ITEMS_TO_SEND = 20; // Limite de itens do pedido a enviar
+const MAX_MESSAGES_HISTORY = 15; // Aumentado para manter mais contexto
+const MAX_MESSAGE_LENGTH = 2000; // Aumentado para evitar truncamento excessivo
+const MAX_TOKENS = 4000;
+const MAX_ITEMS_TO_SEND = 20;
 
 // Função para truncar texto mantendo palavras completas
 function truncateText(text: string, maxLength: number): string {
@@ -143,7 +172,6 @@ async function handler(req: NextRequest) {
   const json = await req.json();
   const { messages } = json;
 
-  // Limita o histórico de mensagens e seu tamanho
   const recentMessages = messages
     .slice(-MAX_MESSAGES_HISTORY)
     .map((msg: any) => ({
@@ -151,18 +179,53 @@ async function handler(req: NextRequest) {
       content: truncateText(msg.content, MAX_MESSAGE_LENGTH)
     }));
   
-  // Verifica se a última mensagem do usuário contém um número de pedido
-  const lastMessage = recentMessages[recentMessages.length - 1];
   let orderData = null;
   
-  if (lastMessage.role === 'user') {
-    // Nova regex que captura tanto números simples quanto números com hífen
-    const orderMatch = lastMessage.content.match(/\b\d{5,}(?:-\d+)?\b/);
-    if (orderMatch) {
-      const orderId = orderMatch[0]; // Agora mantém o hífen se existir
-      const rawOrderData = await searchOrder(orderId);
-      if (rawOrderData && Array.isArray(rawOrderData) && rawOrderData.length > 0) {
-        orderData = prepareOrderData(rawOrderData[0]);
+  // Verifica cache primeiro
+  if (orderCache && isValidCache(orderCache, recentMessages)) {
+    orderData = orderCache.data;
+  }
+  
+  // Procura por número de pedido na última mensagem do usuário
+  const lastUserMessage = recentMessages
+    .filter((msg: { role: string; content: string }) => msg.role === 'user')
+    .pop();
+
+  // Se não tem cache válido ou se é uma nova solicitação de pedido, busca o pedido
+  if (!orderData || (lastUserMessage && lastUserMessage.content.toLowerCase().includes('pedido'))) {
+    if (lastUserMessage) {
+      // Expressão regular mais flexível para encontrar números de pedido
+      const orderIdMatch = lastUserMessage.content.match(/(?:pedido\s*)?(\d{5,}(?:-\d+)?)/i);
+      
+      if (orderIdMatch) {
+        const orderId = orderIdMatch[1];
+        console.log('Buscando pedido:', orderId);
+        
+        // Se o pedido solicitado é diferente do cache atual, busca novo pedido
+        if (!orderCache || orderCache.orderId !== orderId) {
+          const rawOrderData = await searchOrder(orderId);
+          
+          if (rawOrderData && Array.isArray(rawOrderData) && rawOrderData.length > 0) {
+            const processedData = prepareOrderData(rawOrderData[0]);
+            if (processedData) {
+              orderData = processedData;
+              // Atualiza o cache com o novo pedido
+              orderCache = {
+                orderId,
+                data: processedData,
+                timestamp: Date.now()
+              };
+            } else {
+              // Se não encontrou o pedido, limpa o cache
+              orderCache = null;
+              orderData = null;
+            }
+          } else {
+            // Se não encontrou o pedido, limpa o cache
+            orderCache = null;
+            orderData = null;
+          }
+        }
       }
     }
   }
@@ -172,15 +235,21 @@ async function handler(req: NextRequest) {
   if (orderData) {
     finalSystemPrompt = `${systemPrompt}
 
-DADOS DO PEDIDO PARA FORMATAR:
-${JSON.stringify(orderData, null, 0)}
+CONTEXTO ATUAL DO PEDIDO #${orderData.numero_pedido}:
+${JSON.stringify(orderData, null, 2)}
 
-IMPORTANTE: Formate os dados acima EXATAMENTE seguindo o template fornecido no início deste prompt. Mantenha todos os emojis e quebras de linha.`;
+LEMBRE-SE: 
+1. Mantenha este contexto para todas as perguntas sobre este pedido
+2. Responda APENAS o que foi perguntado
+3. Use os emojis correspondentes
+4. Seja direto e conciso`;
   }
 
   const response = await openai.createChatCompletion({
     model: 'gpt-4o-mini',
-    temperature: 0.5,
+    temperature: 0.3,
+    presence_penalty: 0.6,
+    frequency_penalty: 0.2,
     stream: true,
     max_tokens: MAX_TOKENS,
     messages: [
