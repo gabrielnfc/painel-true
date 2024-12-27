@@ -229,7 +229,7 @@ export default function ReportPage() {
 
 			console.log('Total de resultados:', data.results.length);
 
-			// Verifica se há dados antes de atualizar o estado
+			// Verifica se h�� dados antes de atualizar o estado
 			if (data.results.length === 0) {
 				toast({
 					title: 'Aviso',
@@ -271,13 +271,13 @@ export default function ReportPage() {
 		worksheet.columns = [
 			{ header: 'Data Pedido', key: 'data_pedido' },
 			{ header: 'Data Entrega', key: 'data_entrega' },
-			{ header: 'Data Faturamento', key: 'data_faturamento' },
+			{ header: 'Data Faturamento', key: 'data_faturamento_status' },
 			{ header: 'Situação', key: 'situacao_pedido' },
 			{ header: 'ID Pedido', key: 'id_pedido' },
 			{ header: 'ID Nota Fiscal', key: 'id_nota_fiscal' },
-			{ header: 'Número Tiny', key: 'numero_tiny' },
+			{ header: 'Número Tiny', key: 'numero_pedido' },
 			{ header: 'Número OC', key: 'numero_ordem_compra' },
-			{ header: 'Número NF', key: 'numero_nota_fiscal' },
+			{ header: 'Número NF', key: 'numero_nota' },
 			{ header: 'Cliente', key: 'nome_cliente' },
 			{ header: 'CPF/CNPJ', key: 'cpf' },
 			{ header: 'Telefone', key: 'telefone' },
