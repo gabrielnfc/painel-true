@@ -76,15 +76,16 @@ function formatDate(dateStr: string | null | undefined): string {
 	if (!dateStr) return 'N/A';
 
 	try {
+		// Se a data já estiver no formato DD/MM/YYYY, retorna como está
+		if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+			return dateStr;
+		}
+
 		// Tenta converter a string para um objeto Date
 		const date = new Date(dateStr);
 
 		// Verifica se a data é válida
 		if (isNaN(date.getTime())) {
-			// Se a data já estiver no formato DD/MM/YYYY, retorna como está
-			if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-				return dateStr;
-			}
 			return 'N/A';
 		}
 

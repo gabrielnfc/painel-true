@@ -101,63 +101,70 @@ export class BigQueryService {
     console.log('Valor de busca limpo:', cleanedSearchValue);
 
     const query = `
-      SELECT 
-        pedidos.data_pedido AS data_pedido,
-        pedidos.data_entrega AS data_entrega,
+      SELECT
         pedidos.id AS id_pedido,
-        pedidos.numero AS numero_pedido,
-        pedidos.id_nota_fiscal,
-        pedidos.numero_ordem_compra,
-        pedidos.total_produtos,
-        pedidos.total_pedido,
-        pedidos.valor_desconto,
-        pedidos.deposito,
-        pedidos.frete_por_conta,
-        pedidos.codigo_rastreamento,
-        pedidos.nome_transportador,
-        pedidos.forma_frete,
-        pedidos.data_envio,
-        pedidos.situacao AS situacao_pedido,
-        pedidos.data_prevista,
-        pedidos.url_rastreamento,
-        pedidos.cliente AS cliente_json,
-        pedidos.itens AS itens_pedido,
-        pedidos_status.dataPedido AS data_pedido_status,
-        pedidos_status.dataFaturamento AS data_faturamento_status,
-        pedidos_status.situacaoPedido AS situacao_pedido_status,
-        pedidos_status.nome AS nome_status,
-        pedidos_status.telefone AS telefone_status,
-        pedidos_status.email AS email_status,
-        pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
-        pedidos_status.statusTransportadora AS status_transportadora_status,
-        pedidos_status.dataExpedicao AS data_expedicao_status,
-        pedidos_status.dataColeta AS data_coleta_status,
-        pedidos_status.transportador AS transportador_json_status,
-        pedidos_status.formaEnvio AS forma_envio_status,
-        separacoes.situacao AS situacao_separacao,
-        nfes.numero AS numero_nota,
-        nfes.chaveAcesso AS chave_acesso_nota,
-        nfes.valor AS valor_nota,
-        etiquetas.status AS status_transportadora,
-        etiquetas.lastStatusDate AS ultima_atualizacao_status,
-        etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
-        etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
-        pedidos.obs_interna AS obs_interna
-      FROM 
-        \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
-        ON pedidos.id = pedidos_status.idPedido
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
-        ON pedidos.id = separacoes.idOrigem
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
-        ON pedidos.id_nota_fiscal = nfes.id
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
-        ON pedidos.id = etiquetas.idPedido
-      WHERE 
+    pedidos.numero AS numero_pedido,
+    pedidos.id_nota_fiscal,
+    pedidos.numero_ordem_compra,
+    pedidos.total_produtos,
+    pedidos.total_pedido,
+    pedidos.valor_desconto,
+    pedidos.deposito,
+    pedidos.frete_por_conta,
+    pedidos.codigo_rastreamento,
+    pedidos.nome_transportador,
+    pedidos.forma_frete,
+    pedidos.data_pedido,
+    pedidos.data_envio,
+    pedidos.data_entrega,
+    pedidos.situacao AS situacao_pedido,
+    -- Substituímos a data prevista com o valor de shippingEstimateDate
+    COALESCE(
+        JSON_EXTRACT_SCALAR(vtex.packageAttachment, "$.packages[0].shippingEstimateDate"),
+        pedidos.data_prevista
+    ) AS data_prevista,
+    pedidos.url_rastreamento,
+    pedidos.cliente AS cliente_json,
+    pedidos.itens AS itens_pedido,
+    pedidos_status.dataPedido AS data_pedido_status,
+    pedidos_status.dataFaturamento AS data_faturamento_status,
+    pedidos_status.situacaoPedido AS situacao_pedido_status,
+    pedidos_status.nome AS nome_status,
+    pedidos_status.telefone AS telefone_status,
+    pedidos_status.email AS email_status,
+    pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
+    pedidos_status.statusTransportadora AS status_transportadora_status,
+    pedidos_status.dataExpedicao AS data_expedicao_status,
+    pedidos_status.dataColeta AS data_coleta_status,
+    pedidos_status.transportador AS transportador_json_status,
+    pedidos_status.formaEnvio AS forma_envio_status,
+    separacoes.situacao AS situacao_separacao,
+    nfes.numero AS numero_nota,
+    nfes.chaveAcesso AS chave_acesso_nota,
+    nfes.valor AS valor_nota,
+    etiquetas.status AS status_transportadora,
+    etiquetas.lastStatusDate AS ultima_atualizacao_status,
+    etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
+    etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
+    pedidos.obs_interna AS obs_interna
+FROM
+    \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
+    ON pedidos.id = pedidos_status.idPedido
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
+    ON pedidos.id = separacoes.idOrigem
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
+    ON pedidos.id_nota_fiscal = nfes.id
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
+    ON pedidos.id = etiquetas.idPedido
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.vtex_orders\` AS vtex
+    ON pedidos.numero_ordem_compra = vtex.orderId
+      WHERE
         pedidos.id = @search OR
         pedidos.numero = @search OR
         pedidos.id_nota_fiscal = @search OR
@@ -193,69 +200,70 @@ export class BigQueryService {
     console.log('Iniciando busca de relatório:', { startDate, endDate });
 
     const query = `
-      SELECT 
-        pedidos.data_pedido AS data_pedido,
-        pedidos.data_entrega AS data_entrega,
+      SELECT
         pedidos.id AS id_pedido,
-        pedidos.numero AS numero_pedido,
-        pedidos.id_nota_fiscal,
-        pedidos.numero_ordem_compra,
-        pedidos.total_produtos,
-        pedidos.total_pedido,
-        pedidos.valor_desconto,
-        pedidos.deposito,
-        pedidos.frete_por_conta,
-        pedidos.codigo_rastreamento,
-        pedidos.nome_transportador AS transportadora,
-        pedidos.forma_frete,
-        pedidos.data_envio,
-        pedidos.situacao AS situacao_pedido,
-        pedidos.data_prevista,
-        pedidos.url_rastreamento,
-        pedidos.cliente AS cliente_json,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.nome') AS nome_cliente,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cpf_cnpj') AS cpf,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.fone') AS telefone,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.email') AS email,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.uf') AS uf,
-        JSON_EXTRACT_SCALAR(pedidos.cliente, '$.cep') AS cep,
-        pedidos.itens AS produtos,
-        pedidos_status.dataPedido AS data_pedido_status,
-        pedidos_status.dataFaturamento AS data_faturamento_status,
-        pedidos_status.situacaoPedido AS situacao_pedido_status,
-        pedidos_status.nome AS nome_status,
-        pedidos_status.telefone AS telefone_status,
-        pedidos_status.email AS email_status,
-        pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
-        pedidos_status.statusTransportadora AS status_transportadora_status,
-        pedidos_status.dataExpedicao AS data_expedicao_status,
-        pedidos_status.dataColeta AS data_coleta_status,
-        pedidos_status.transportador AS transportador_json_status,
-        pedidos_status.formaEnvio AS forma_envio_status,
-        separacoes.situacao AS situacao_separacao,
-        nfes.numero AS numero_nota,
-        nfes.chaveAcesso AS chave_acesso_nota,
-        nfes.valor AS valor_nota,
-        etiquetas.status AS status_transportadora,
-        etiquetas.lastStatusDate AS ultima_atualizacao_status,
-        etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
-        etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
-        pedidos.obs_interna AS obs_interna
-      FROM 
-        \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
-        ON pedidos.id = pedidos_status.idPedido
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
-        ON pedidos.id = separacoes.idOrigem
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
-        ON pedidos.id_nota_fiscal = nfes.id
-      LEFT JOIN 
-        \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
-        ON pedidos.id = etiquetas.idPedido
-      WHERE 
+    pedidos.numero AS numero_pedido,
+    pedidos.id_nota_fiscal,
+    pedidos.numero_ordem_compra,
+    pedidos.total_produtos,
+    pedidos.total_pedido,
+    pedidos.valor_desconto,
+    pedidos.deposito,
+    pedidos.frete_por_conta,
+    pedidos.codigo_rastreamento,
+    pedidos.nome_transportador,
+    pedidos.forma_frete,
+    pedidos.data_pedido,
+    pedidos.data_envio,
+    pedidos.data_entrega,
+    pedidos.situacao AS situacao_pedido,
+    -- Substituímos a data prevista com o valor de shippingEstimateDate
+    COALESCE(
+        JSON_EXTRACT_SCALAR(vtex.packageAttachment, "$.packages[0].shippingEstimateDate"),
+        pedidos.data_prevista
+    ) AS data_prevista,
+    pedidos.url_rastreamento,
+    pedidos.cliente AS cliente_json,
+    pedidos.itens AS itens_pedido,
+    pedidos_status.dataPedido AS data_pedido_status,
+    pedidos_status.dataFaturamento AS data_faturamento_status,
+    pedidos_status.situacaoPedido AS situacao_pedido_status,
+    pedidos_status.nome AS nome_status,
+    pedidos_status.telefone AS telefone_status,
+    pedidos_status.email AS email_status,
+    pedidos_status.tipoEnvioTransportadora AS tipo_envio_transportadora_status,
+    pedidos_status.statusTransportadora AS status_transportadora_status,
+    pedidos_status.dataExpedicao AS data_expedicao_status,
+    pedidos_status.dataColeta AS data_coleta_status,
+    pedidos_status.transportador AS transportador_json_status,
+    pedidos_status.formaEnvio AS forma_envio_status,
+    separacoes.situacao AS situacao_separacao,
+    nfes.numero AS numero_nota,
+    nfes.chaveAcesso AS chave_acesso_nota,
+    nfes.valor AS valor_nota,
+    etiquetas.status AS status_transportadora,
+    etiquetas.lastStatusDate AS ultima_atualizacao_status,
+    etiquetas.codigoRastreamento AS codigo_rastreamento_etiqueta,
+    etiquetas.urlRastreamento AS url_rastreamento_etiqueta,
+    pedidos.obs_interna AS obs_interna
+FROM
+    \`truebrands-warehouse.truebrands_providers.tiny_pedidos\` AS pedidos
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_warehouse.pedidos_status\` AS pedidos_status
+    ON pedidos.id = pedidos_status.idPedido
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.tiny_separacoes\` AS separacoes
+    ON pedidos.id = separacoes.idOrigem
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.tinyV3_nfes\` AS nfes
+    ON pedidos.id_nota_fiscal = nfes.id
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.transportadoras_etiquetas\` AS etiquetas
+    ON pedidos.id = etiquetas.idPedido
+LEFT JOIN
+    \`truebrands-warehouse.truebrands_providers.vtex_orders\` AS vtex
+    ON pedidos.numero_ordem_compra = vtex.orderId
+      WHERE
         PARSE_DATE('%d/%m/%Y', pedidos.data_pedido) BETWEEN DATE(@startDate) AND DATE(@endDate)
       ORDER BY pedidos.data_pedido DESC;
     `;
