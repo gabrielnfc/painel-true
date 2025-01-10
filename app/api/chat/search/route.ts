@@ -1,4 +1,4 @@
-import { BigQueryService } from '@/lib/bigquery';
+import { chatService } from '@/lib/services/chat-service';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -12,10 +12,16 @@ export async function POST(req: Request) {
             );
         }
 
-        const bigQueryService = new BigQueryService();
-        const results = await bigQueryService.searchOrder(orderNumber);
+        const result = await chatService.searchOrder(orderNumber);
 
-        return NextResponse.json({ results });
+        if (!result) {
+            return NextResponse.json(
+                { error: 'Pedido não encontrado' },
+                { status: 404 }
+            );
+        }
+
+        return NextResponse.json({ result });
     } catch (error) {
         console.error('Erro ao buscar pedido:', error);
         return NextResponse.json(

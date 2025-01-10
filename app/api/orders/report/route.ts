@@ -1,41 +1,92 @@
 import { NextRequest } from 'next/server';
-import { BigQueryService } from '@/lib/bigquery';
+import { reportService } from '@/lib/services/report-service';
 import { withRateLimit } from '@/lib/rate-limit';
 
-// Função principal do handler
 async function handler(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    console.log('Recebendo requisição de relatório:', { startDate, endDate });
-
     if (!startDate || !endDate) {
-      console.error('Parâmetros de data faltando');
-      return new Response(JSON.stringify({ error: 'Missing date parameters' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ 
+          error: 'As datas inicial e final são obrigatórias' 
+        }), 
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    const bigquery = new BigQueryService();
-    const results = await bigquery.getOrdersReport(startDate, endDate);
+    // Validar formato das datas
+    const start = new Date(startDate);
+    const end = new Date(endDate);
 
-    console.log('Resultados obtidos:', { count: results.length });
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Formato de data inválido' 
+        }), 
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
-    return new Response(JSON.stringify({ results }), {
-      status: 200,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store'
-      },
-    });
-  } catch (error) {
-    console.error('Error generating report:', error);
+    // Validar intervalo de datas
+    if (end < start) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'A data final deve ser maior que a data inicial' 
+        }), 
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Validar intervalo máximo de 3 meses
+    const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    if (diffMonths > 3) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'O intervalo máximo permitido é de 3 meses' 
+        }), 
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const results = await reportService.getOrdersReport(startDate, endDate);
+
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Internal server error',
+        results,
+        metadata: {
+          total: results.length,
+          startDate,
+          endDate,
+        }
+      }), 
+      {
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        },
+      }
+    );
+  } catch (error) {
+    console.error('Erro ao gerar relatório:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Erro interno ao gerar relatório',
         details: error instanceof Error ? error.stack : undefined
       }), 
       {
@@ -46,5 +97,4 @@ async function handler(req: NextRequest) {
   }
 }
 
-// Exporta o handler com rate limiting
 export const GET = withRateLimit(handler); 

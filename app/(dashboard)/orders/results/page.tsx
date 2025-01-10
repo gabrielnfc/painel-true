@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Card } from '../../../components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -267,424 +267,510 @@ function InfoItem({
 function ResultsContent() {
 	const searchParams = useSearchParams();
 	const router = useRouter();
-	const query = searchParams.get('q');
-	const [result, setResult] = useState<OrderResult | null>(null);
-	const [isLoading, setIsLoading] = useState(true);
+	const [results, setResults] = useState<OrderResult[]>([]);
+	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		const fetchResults = async () => {
-			if (!query) {
-				router.push('/orders/search');
-				return;
-			}
-
 			try {
-				setIsLoading(true);
+				setLoading(true);
 				setError(null);
 
-				console.log('Buscando pedido:', query);
-				const response = await fetch(
-					`/api/orders/search?${searchParams.toString()}`
-				);
-				const data = await response.json();
-				console.log('Resposta da API:', data);
-				console.log(
-					'Número da ordem de compra:',
-					data.results[0]?.numero_ordem_compra
-				);
+				const params = new URLSearchParams({
+					q: searchParams.get('q') || '',
+					page: searchParams.get('page') || '1',
+					pageSize: searchParams.get('pageSize') || '10',
+				});
 
+				const response = await fetch(`/api/orders/search?${params}`);
 				if (!response.ok) {
-					console.error('Erro na API:', data);
-					throw new Error(data.error || 'Pedido não encontrado');
+					const errorData = await response.json();
+					throw new Error(errorData.error || 'Falha ao buscar resultados');
 				}
 
-				if (!data.results || data.results.length === 0) {
-					setError('Pedido não encontrado');
-					toast({
-						title: 'Erro na busca',
-						description: 'Pedido não encontrado',
-						variant: 'destructive',
-					});
-					return;
+				const data = await response.json();
+				if (!data.data || !Array.isArray(data.data)) {
+					throw new Error('Formato de resposta inválido');
 				}
 
-				setResult(data.results[0]);
-				console.log(
-					'Número ordem de compra:',
-					data.results[0].numero_ordem_compra
-				);
+				setResults(data.data);
 			} catch (err) {
-				console.error('Erro ao buscar:', err);
-				setError('Pedido não encontrado');
+				console.error('Erro ao buscar resultados:', err);
+				setError(
+					err instanceof Error ? err.message : 'Erro ao buscar resultados'
+				);
 				toast({
-					title: 'Erro na busca',
+					title: 'Erro',
 					description:
-						err instanceof Error ? err.message : 'Erro ao buscar pedido',
+						err instanceof Error ? err.message : 'Erro ao buscar resultados',
 					variant: 'destructive',
 				});
 			} finally {
-				setIsLoading(false);
+				setLoading(false);
 			}
 		};
 
-		fetchResults();
-	}, [query, router, searchParams]);
+		if (searchParams.get('q')) {
+			fetchResults();
+		}
+	}, [searchParams]);
 
-	if (isLoading) {
+	const handleBack = () => {
+		router.push('/orders/search');
+	};
+
+	if (loading) {
 		return (
 			<div className="container mx-auto px-4 py-8">
-				<Skeleton className="h-[600px] w-full" />
-			</div>
-		);
-	}
-
-	if (error || !result) {
-		return (
-			<div className="container mx-auto px-4 py-8">
-				<div className="max-w-2xl mx-auto">
-					<Alert variant="destructive">
-						<AlertDescription>
-							{error || 'Pedido não encontrado'}
-						</AlertDescription>
-					</Alert>
-					<Button
-						variant="outline"
-						className="mt-4"
-						onClick={() => router.push('/orders/search')}
-					>
-						<ArrowLeft className="h-4 w-4 mr-2" />
-						Voltar para busca
-					</Button>
+				<div className="max-w-7xl mx-auto space-y-6">
+					<Skeleton className="h-12 w-32" />
+					<Skeleton className="h-[200px] w-full" />
+					<Skeleton className="h-[150px] w-full" />
+					<Skeleton className="h-[300px] w-full" />
 				</div>
 			</div>
 		);
 	}
 
-	const cliente = JSON.parse(result.cliente_json);
-	const itens = JSON.parse(result.itens_pedido);
-	const transportador = result.transportador_json_status
-		? JSON.parse(result.transportador_json_status)
-		: null;
+	if (error) {
+		return (
+			<div className="container mx-auto px-4 py-8">
+				<div className="max-w-7xl mx-auto">
+					<Button onClick={handleBack} variant="outline" className="mb-4">
+						<ArrowLeft className="h-4 w-4 mr-2" />
+						Voltar
+					</Button>
+					<Alert variant="destructive" className="mt-4">
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				</div>
+			</div>
+		);
+	}
+
+	if (results.length === 0) {
+		return (
+			<div className="container mx-auto px-4 py-8">
+				<div className="max-w-7xl mx-auto">
+					<Button onClick={handleBack} variant="outline" className="mb-4">
+						<ArrowLeft className="h-4 w-4 mr-2" />
+						Voltar
+					</Button>
+					<Alert className="mt-4">
+						<AlertDescription>
+							Nenhum resultado encontrado para a busca.
+						</AlertDescription>
+					</Alert>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="container mx-auto px-4 py-8">
-			<div className="max-w-5xl mx-auto space-y-8">
-				<div className="flex justify-between items-center">
-					<h1 className="text-2xl font-bold">Pedido #{result.numero_pedido}</h1>
-					<Button
-						variant="outline"
-						onClick={() => router.push('/orders/search')}
-					>
+			<div className="max-w-7xl mx-auto">
+				<div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-4 mb-6">
+					<Button onClick={handleBack} variant="outline" className="mb-2">
 						<ArrowLeft className="h-4 w-4 mr-2" />
-						Voltar para busca
+						Voltar
 					</Button>
 				</div>
 
-				{/* Detalhes do Pedido */}
-				<Card className="p-6">
-					<div className="flex items-center gap-2 mb-4">
-						<Package className="h-5 w-5" />
-						<h2 className="text-xl font-semibold">Detalhes do Pedido</h2>
-					</div>
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-						<InfoItem
-							label="ID Pedido"
-							value={result.id_pedido}
-							isOrderId={true}
-						/>
-						<InfoItem label="Número Pedido" value={result.numero_pedido} />
-						<InfoItem
-							label="Número Ordem Compra"
-							value={result.numero_ordem_compra}
-							isVtexOrder={true}
-							link={`https://tfcucl.myvtex.com/admin/orders/${result.numero_ordem_compra}`}
-						/>
-						<InfoItem
-							label="Total Produtos"
-							value={formatCurrency(result.total_produtos)}
-						/>
-						<InfoItem
-							label="Total Pedido"
-							value={formatCurrency(result.total_pedido)}
-						/>
-						<InfoItem
-							label="Valor Desconto"
-							value={formatCurrency(result.valor_desconto)}
-						/>
-						<InfoItem label="Depósito" value={result.deposito} />
-						<InfoItem
-							label="Frete por Conta"
-							value={result.frete_por_conta}
-							isShipping={true}
-						/>
-						<InfoItem
-							label="Nome Transportador"
-							value={result.nome_transportador}
-						/>
-						<InfoItem label="Forma Frete" value={result.forma_frete} />
-						<InfoItem
-							label="Data Envio"
-							value={result.data_envio}
-							isDate={true}
-						/>
-						<InfoItem
-							label="Situação Pedido"
-							value={result.situacao_pedido_status}
-							isStatus={true}
-						/>
-						<InfoItem
-							label="Data Prevista"
-							value={result.data_prevista}
-							isDate={true}
-						/>
-					</div>
-				</Card>
-
-				{/* Informações do Cliente */}
-				<Card className="p-6">
-					<div className="flex items-center gap-2 mb-4">
-						<User className="h-5 w-5" />
-						<h2 className="text-xl font-semibold">Informações do Cliente</h2>
-					</div>
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<InfoItem label="Nome" value={cliente.nome} />
-						<InfoItem label="Email" value={cliente.email} />
-						<InfoItem label="Telefone" value={cliente.fone} />
-						<InfoItem label="CPF/CNPJ" value={cliente.cpf_cnpj} />
-						<InfoItem
-							label="Endereço"
-							value={`${cliente.endereco}, ${cliente.numero}`}
-						/>
-						<InfoItem label="Complemento" value={cliente.complemento} />
-						<InfoItem label="Bairro" value={cliente.bairro} />
-						<InfoItem
-							label="Cidade/UF"
-							value={`${cliente.cidade} - ${cliente.uf}`}
-						/>
-						<InfoItem label="CEP" value={cliente.cep} />
-					</div>
-				</Card>
-
-				{/* Itens do Pedido */}
-				<Card className="p-6">
-					<div className="flex items-center gap-2 mb-4">
-						<Package className="h-5 w-5" />
-						<h2 className="text-xl font-semibold">Itens do Pedido</h2>
-					</div>
-					<div className="space-y-4">
-						{itens.map((itemData: any, index: number) => {
-							const item = itemData.item;
-							return (
-								<div
-									key={index}
-									className="flex justify-between items-start py-4 border-b last:border-0"
+				{results.map((order) => (
+					<div key={order.id_pedido} className="space-y-6 mb-12">
+						<div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg">
+							<h1 className="text-2xl font-bold flex items-center gap-2">
+								<Package className="h-6 w-6" />
+								Pedido #{order.numero_pedido}
+							</h1>
+							<div className="flex items-center gap-2">
+								<span
+									className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+										order.situacao_pedido
+									)
+										.replace('text-', 'bg-')
+										.replace('600', '100')} ${getStatusColor(
+										order.situacao_pedido
+									)}`}
 								>
-									<div className="flex-1">
-										<p className="font-medium">{item.descricao}</p>
-										<div className="mt-1 text-sm text-muted-foreground space-y-1">
-											<p>Código: {item.codigo}</p>
-											<p>ID Produto: {item.id_produto}</p>
-											<p>
-												Quantidade: {item.quantidade} {item.unidade}
+									{getOrderStatus(order.situacao_pedido)}
+								</span>
+							</div>
+						</div>
+
+						{/* Detalhes do Pedido */}
+						<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+							<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+								<Package className="h-5 w-5 text-primary" />
+								<h2 className="text-xl font-semibold">Detalhes do Pedido</h2>
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+								<InfoItem
+									label="ID Pedido"
+									value={order.id_pedido}
+									isOrderId={true}
+								/>
+								<InfoItem label="Número Pedido" value={order.numero_pedido} />
+								<InfoItem
+									label="Número Ordem Compra"
+									value={order.numero_ordem_compra}
+									isVtexOrder={true}
+									link={`https://tfcucl.myvtex.com/admin/orders/${order.numero_ordem_compra}`}
+								/>
+								<InfoItem
+									label="Total Produtos"
+									value={formatCurrency(order.total_produtos)}
+								/>
+								<InfoItem
+									label="Total Pedido"
+									value={formatCurrency(order.total_pedido)}
+								/>
+								<InfoItem
+									label="Valor Desconto"
+									value={formatCurrency(order.valor_desconto)}
+								/>
+								<InfoItem label="Depósito" value={order.deposito} />
+								<InfoItem
+									label="Frete por Conta"
+									value={order.frete_por_conta}
+									isShipping={true}
+								/>
+								<InfoItem
+									label="Nome Transportador"
+									value={order.nome_transportador}
+								/>
+								<InfoItem label="Forma Frete" value={order.forma_frete} />
+								<InfoItem
+									label="Data Envio"
+									value={order.data_envio}
+									isDate={true}
+								/>
+								<InfoItem
+									label="Situação Pedido"
+									value={order.situacao_pedido_status}
+									isStatus={true}
+								/>
+								<InfoItem
+									label="Data Prevista"
+									value={order.data_prevista}
+									isDate={true}
+								/>
+							</div>
+						</Card>
+
+						{/* Informações do Cliente */}
+						<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+							<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+								<User className="h-5 w-5 text-primary" />
+								<h2 className="text-xl font-semibold">
+									Informações do Cliente
+								</h2>
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+								<InfoItem
+									label="Nome"
+									value={JSON.parse(order.cliente_json).nome}
+								/>
+								<InfoItem
+									label="Email"
+									value={JSON.parse(order.cliente_json).email}
+								/>
+								<InfoItem
+									label="Telefone"
+									value={JSON.parse(order.cliente_json).fone}
+								/>
+								<InfoItem
+									label="CPF/CNPJ"
+									value={JSON.parse(order.cliente_json).cpf_cnpj}
+								/>
+								<InfoItem
+									label="Endereço"
+									value={`${JSON.parse(order.cliente_json).endereco}, ${
+										JSON.parse(order.cliente_json).numero
+									}`}
+								/>
+								<InfoItem
+									label="Complemento"
+									value={JSON.parse(order.cliente_json).complemento}
+								/>
+								<InfoItem
+									label="Bairro"
+									value={JSON.parse(order.cliente_json).bairro}
+								/>
+								<InfoItem
+									label="Cidade/UF"
+									value={`${JSON.parse(order.cliente_json).cidade} - ${
+										JSON.parse(order.cliente_json).uf
+									}`}
+								/>
+								<InfoItem
+									label="CEP"
+									value={JSON.parse(order.cliente_json).cep}
+								/>
+							</div>
+						</Card>
+
+						{/* Itens do Pedido */}
+						<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+							<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+								<Package className="h-5 w-5 text-primary" />
+								<h2 className="text-xl font-semibold">Itens do Pedido</h2>
+							</div>
+							<div className="space-y-4">
+								{JSON.parse(order.itens_pedido).map(
+									(itemData: any, index: number) => {
+										const item = itemData.item;
+										return (
+											<div
+												key={index}
+												className="flex justify-between items-start p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+											>
+												<div className="flex-1">
+													<p className="font-medium text-lg">
+														{item.descricao}
+													</p>
+													<div className="mt-2 text-sm text-muted-foreground space-y-1">
+														<p className="flex items-center gap-2">
+															<span className="font-medium">Código:</span>{' '}
+															{item.codigo}
+														</p>
+														<p className="flex items-center gap-2">
+															<span className="font-medium">ID Produto:</span>{' '}
+															{item.id_produto}
+														</p>
+														<p className="flex items-center gap-2">
+															<span className="font-medium">Quantidade:</span>{' '}
+															{item.quantidade} {item.unidade}
+														</p>
+													</div>
+												</div>
+												<div className="text-right">
+													<p className="font-medium text-lg text-primary">
+														{formatCurrency(item.valor_unitario)}
+													</p>
+													<p className="text-sm text-muted-foreground mt-1">
+														Valor unitário
+													</p>
+												</div>
+											</div>
+										);
+									}
+								)}
+							</div>
+						</Card>
+
+						{/* Status do Pedido */}
+						<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+							<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+								<Calendar className="h-5 w-5 text-primary" />
+								<h2 className="text-xl font-semibold">Status do Pedido</h2>
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+								<InfoItem
+									label="Data Pedido"
+									value={order.data_pedido_status}
+									isDate={true}
+								/>
+								<InfoItem
+									label="Data Entrega"
+									value={order.data_entrega}
+									isDate={true}
+								/>
+								<InfoItem
+									label="Data Faturamento"
+									value={order.data_faturamento_status}
+									isDate={true}
+								/>
+								<InfoItem
+									label="Situação Pedido"
+									value={order.situacao_pedido_status}
+									isStatus={true}
+								/>
+								<InfoItem label="Nome Status" value={order.nome_status} />
+								<InfoItem
+									label="Telefone Status"
+									value={order.telefone_status}
+								/>
+								<InfoItem label="Email Status" value={order.email_status} />
+								<InfoItem
+									label="Tipo Envio"
+									value={order.tipo_envio_transportadora_status}
+								/>
+								<InfoItem
+									label="Status Transportadora"
+									value={order.status_transportadora_status}
+								/>
+								<InfoItem
+									label="Data Expedição"
+									value={order.data_expedicao_status}
+									isDate={true}
+								/>
+								<InfoItem
+									label="Data Coleta"
+									value={order.data_coleta_status}
+									isDate={true}
+								/>
+							</div>
+						</Card>
+
+						{/* Detalhes do Transportador */}
+						{order.transportador_json_status && (
+							<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+								<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+									<Truck className="h-5 w-5 text-primary" />
+									<h2 className="text-xl font-semibold">
+										Detalhes do Transportador
+									</h2>
+								</div>
+								<div className="space-y-6">
+									<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+										<div className="p-4 rounded-lg border">
+											<p className="text-sm font-medium text-muted-foreground mb-2">
+												Transportadora
+											</p>
+											<p className="text-lg font-medium">
+												{JSON.parse(order.transportador_json_status).nome}
+											</p>
+											<p className="text-sm text-muted-foreground mt-2">
+												ID: {JSON.parse(order.transportador_json_status).id}
+											</p>
+										</div>
+										<div className="p-4 rounded-lg border">
+											<p className="text-sm font-medium text-muted-foreground mb-2">
+												Forma de Envio
+											</p>
+											<p className="text-lg font-medium">
+												{
+													JSON.parse(order.transportador_json_status).formaEnvio
+														?.nome
+												}
+											</p>
+											<p className="text-sm text-muted-foreground mt-2">
+												ID:{' '}
+												{
+													JSON.parse(order.transportador_json_status).formaEnvio
+														?.id
+												}
 											</p>
 										</div>
 									</div>
-									<div className="text-right">
-										<p className="font-medium">
-											{formatCurrency(item.valor_unitario)}
-										</p>
-										<p className="text-sm text-muted-foreground mt-1">
-											Valor unitário
-										</p>
-									</div>
-								</div>
-							);
-						})}
-					</div>
-				</Card>
 
-				{/* Status do Pedido */}
-				<Card className="p-6">
-					<div className="flex items-center gap-2 mb-4">
-						<Calendar className="h-5 w-5" />
-						<h2 className="text-xl font-semibold">Status do Pedido</h2>
-					</div>
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-						<InfoItem
-							label="Data Pedido"
-							value={result.data_pedido_status}
-							isDate={true}
-						/>
-						<InfoItem
-							label="Data Entrega"
-							value={result.data_entrega}
-							isDate={true}
-						/>
-						<InfoItem
-							label="Data Faturamento"
-							value={result.data_faturamento_status}
-							isDate={true}
-						/>
-						<InfoItem
-							label="Situação Pedido"
-							value={result.situacao_pedido_status}
-							isStatus={true}
-						/>
-						<InfoItem label="Nome Status" value={result.nome_status} />
-						<InfoItem label="Telefone Status" value={result.telefone_status} />
-						<InfoItem label="Email Status" value={result.email_status} />
-						<InfoItem
-							label="Tipo Envio"
-							value={result.tipo_envio_transportadora_status}
-						/>
-						<InfoItem
-							label="Status Transportadora"
-							value={result.status_transportadora_status}
-						/>
-						<InfoItem
-							label="Data Expedição"
-							value={result.data_expedicao_status}
-							isDate={true}
-						/>
-						<InfoItem
-							label="Data Coleta"
-							value={result.data_coleta_status}
-							isDate={true}
-						/>
-					</div>
-				</Card>
-
-				{/* Detalhes do Transportador */}
-				{transportador && (
-					<Card className="p-6">
-						<div className="flex items-center gap-2 mb-4">
-							<Truck className="h-5 w-5" />
-							<h2 className="text-xl font-semibold">
-								Detalhes do Transportador
-							</h2>
-						</div>
-						<div className="space-y-4">
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<div>
-									<p className="text-sm text-muted-foreground">
-										Transportadora
-									</p>
-									<p className="font-medium">{transportador.nome}</p>
-									<p className="text-sm text-muted-foreground mt-2">
-										ID: {transportador.id}
-									</p>
-								</div>
-								<div>
-									<p className="text-sm text-muted-foreground">
-										Forma de Envio
-									</p>
-									<p className="font-medium">
-										{transportador.formaEnvio?.nome}
-									</p>
-									<p className="text-sm text-muted-foreground mt-2">
-										ID: {transportador.formaEnvio?.id}
-									</p>
-								</div>
-							</div>
-
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-								<div>
-									<p className="text-sm text-muted-foreground">
-										Forma de Frete
-									</p>
-									<p className="font-medium">
-										{transportador.formaFrete?.nome}
-									</p>
-									<p className="text-sm text-muted-foreground mt-2">
-										ID: {transportador.formaFrete?.id}
-									</p>
-								</div>
-								<div>
-									<p className="text-sm text-muted-foreground">
-										Frete por Conta
-									</p>
-									<p className="font-medium">
-										{getShippingResponsibility(transportador.fretePorConta)}
-									</p>
-								</div>
-							</div>
-
-							{/* Rastreamento */}
-							{(result.url_rastreamento || result.codigo_rastreamento) && (
-								<div className="pt-4 border-t">
-									{result.codigo_rastreamento && (
-										<div className="mb-2">
-											<p className="text-sm text-muted-foreground">
-												Código de Rastreamento
+									<div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+										<div className="p-4 rounded-lg border">
+											<p className="text-sm font-medium text-muted-foreground mb-2">
+												Forma de Frete
 											</p>
-											<p className="font-medium">
-												{result.codigo_rastreamento}
+											<p className="text-lg font-medium">
+												{
+													JSON.parse(order.transportador_json_status).formaFrete
+														?.nome
+												}
+											</p>
+											<p className="text-sm text-muted-foreground mt-2">
+												ID:{' '}
+												{
+													JSON.parse(order.transportador_json_status).formaFrete
+														?.id
+												}
 											</p>
 										</div>
-									)}
-									{result.url_rastreamento && (
-										<Button
-											variant="outline"
-											size="sm"
-											className="gap-2"
-											onClick={() =>
-												window.open(result.url_rastreamento, '_blank')
-											}
-										>
-											Rastrear Pedido
-											<ExternalLink className="h-4 w-4" />
-										</Button>
+										<div className="p-4 rounded-lg border">
+											<p className="text-sm font-medium text-muted-foreground mb-2">
+												Frete por Conta
+											</p>
+											<p className="text-lg font-medium">
+												{getShippingResponsibility(
+													JSON.parse(order.transportador_json_status)
+														.fretePorConta
+												)}
+											</p>
+										</div>
+									</div>
+
+									{/* Rastreamento */}
+									{(order.url_rastreamento || order.codigo_rastreamento) && (
+										<div className="pt-6 border-t">
+											{order.codigo_rastreamento && (
+												<div className="mb-4 p-4 rounded-lg border">
+													<p className="text-sm font-medium text-muted-foreground mb-2">
+														Código de Rastreamento
+													</p>
+													<p className="text-lg font-medium">
+														{order.codigo_rastreamento}
+													</p>
+												</div>
+											)}
+											{order.url_rastreamento && (
+												<Button
+													variant="outline"
+													size="lg"
+													className="gap-2 w-full md:w-auto"
+													onClick={() =>
+														window.open(order.url_rastreamento, '_blank')
+													}
+												>
+													Rastrear Pedido
+													<ExternalLink className="h-4 w-4" />
+												</Button>
+											)}
+										</div>
 									)}
 								</div>
-							)}
-						</div>
-					</Card>
-				)}
+							</Card>
+						)}
 
-				{/* Informações Adicionais */}
-				<Card className="p-6">
-					<div className="flex items-center gap-2 mb-4">
-						<Info className="h-5 w-5" />
-						<h2 className="text-xl font-semibold">Informações Adicionais</h2>
+						{/* Informações Adicionais */}
+						<Card className="p-6 shadow-sm hover:shadow-md transition-shadow">
+							<div className="flex items-center gap-2 mb-6 pb-2 border-b">
+								<Info className="h-5 w-5 text-primary" />
+								<h2 className="text-xl font-semibold">
+									Informações Adicionais
+								</h2>
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+								<InfoItem
+									label="Observações Internas"
+									value={order.obs_interna}
+								/>
+								<InfoItem label="Numero Nota" value={order.numero_nota} />
+								<InfoItem
+									label="Chave Acesso Nota"
+									value={order.chave_acesso_nota}
+									truncate={true}
+								/>
+								<InfoItem
+									label="Valor Nota"
+									value={formatCurrency(order.valor_nota)}
+								/>
+								<InfoItem
+									label="Status Transportadora"
+									value={order.status_transportadora}
+								/>
+								<InfoItem
+									label="Última Atualização Status"
+									value={order.ultima_atualizacao_status}
+								/>
+								<InfoItem
+									label="Código Rastreamento Etiqueta"
+									value={order.codigo_rastreamento_etiqueta}
+								/>
+								<InfoItem
+									label="URL Rastreamento Etiqueta"
+									value={order.url_rastreamento_etiqueta}
+								/>
+							</div>
+						</Card>
 					</div>
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-						<InfoItem label="Observações Internas" value={result.obs_interna} />
-						<InfoItem label="Numero Nota" value={result.numero_nota} />
-						<InfoItem
-							label="Chave Acesso Nota"
-							value={result.chave_acesso_nota}
-							truncate={true}
-						/>
-						<InfoItem
-							label="Valor Nota"
-							value={formatCurrency(result.valor_nota)}
-						/>
-						<InfoItem
-							label="Status Transportadora"
-							value={result.status_transportadora}
-						/>
-						<InfoItem
-							label="Última Atualização Status"
-							value={result.ultima_atualizacao_status}
-						/>
-						<InfoItem
-							label="Código Rastreamento Etiqueta"
-							value={result.codigo_rastreamento_etiqueta}
-						/>
-						<InfoItem
-							label="URL Rastreamento Etiqueta"
-							value={result.url_rastreamento_etiqueta}
-						/>
-					</div>
-				</Card>
+				))}
 
-				{/* Botão Voltar */}
-				<div className="flex justify-center mt-8">
+				{/* Botão Voltar no final da página */}
+				<div className="flex justify-center mt-8 pb-8">
 					<Button
 						variant="outline"
-						onClick={() => router.push('/orders/search')}
+						onClick={handleBack}
 						className="w-full max-w-sm"
+						size="lg"
 					>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Voltar para busca
