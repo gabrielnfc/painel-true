@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTreatmentHistory } from '@/lib/services/treatments-service';
+import { getTreatmentHistory } from '../../../lib/services/treatment-service';
 
 export async function GET(request: Request) {
   try {
@@ -13,10 +13,7 @@ export async function GET(request: Request) {
     const history = await getTreatmentHistory(orderId);
     return NextResponse.json(history);
   } catch (error) {
-    console.error('Error fetching treatment history:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar histórico de tratamento' },
-      { status: 500 }
-    );
+    console.error('Erro ao buscar histórico de tratativas:', error);
+    return NextResponse.json({ error: 'Erro ao buscar histórico de tratativas' }, { status: 500 });
   }
 } 
