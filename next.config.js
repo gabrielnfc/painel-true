@@ -18,7 +18,11 @@ const nextConfig = {
   },
   output: "standalone",
   experimental: {
-    serverActions: true,
+    serverComponentsExternalPackages: ["pg", "pg-pool"],
+    optimizePackageImports: ["@radix-ui/react-icons"],
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -30,8 +34,18 @@ const nextConfig = {
         child_process: false,
       };
     }
+    config.optimization = {
+      ...config.optimization,
+      moduleIds: "deterministic",
+      minimize: true,
+    };
     return config;
   },
+  poweredByHeader: false,
+  compress: true,
+  generateEtags: true,
+  reactStrictMode: true,
+  swcMinify: true,
 };
 
 module.exports = nextConfig;

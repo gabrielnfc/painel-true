@@ -15,9 +15,9 @@ interface PoolMetrics {
 class Database {
   private pool: Pool | null = null;
   private readonly retryConfig: RetryConfig = {
-    maxRetries: 3,
-    initialDelay: 1000,
-    maxDelay: 5000
+    maxRetries: 5,
+    initialDelay: 2000,
+    maxDelay: 30000
   };
 
   constructor() {
@@ -33,14 +33,21 @@ class Database {
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 20, // máximo de conexões no pool
-      idleTimeoutMillis: 30000, // tempo máximo que uma conexão pode ficar ociosa
-      connectionTimeoutMillis: 2000, // tempo máximo para estabelecer uma conexão
+      max: 10, // reduzido para evitar sobrecarga
+      idleTimeoutMillis: 60000, // aumentado para 1 minuto
+      connectionTimeoutMillis: 10000, // aumentado para 10 segundos
+      allowExitOnIdle: true, // permite que o pool seja fechado quando ocioso
+      application_name: 'painel-true', // identifica a aplicação nas conexões
     });
 
     this.pool.on('error', (err: Error) => {
       console.error('Erro inesperado no pool de conexões:', err);
       this.logError('pool_error', err);
+      // Tenta reinicializar o pool após erro
+      setTimeout(() => {
+        console.log('Tentando reinicializar o pool de conexões...');
+        this.initializePool();
+      }, 5000);
     });
 
     this.pool.on('connect', (client: PoolClient) => {
