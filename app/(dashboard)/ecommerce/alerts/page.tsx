@@ -11,9 +11,20 @@ export const metadata: Metadata = {
 	description: 'Alertas de pedidos atrasados',
 };
 
+export const revalidate = 300; // Revalidar a cada 5 minutos
+
 async function AlertMetrics() {
-	const metrics = await metricsService.getAlertMetrics();
-	return <MetricsDashboard data={metrics} />;
+	try {
+		const metrics = await metricsService.getAlertMetrics();
+		return <MetricsDashboard data={metrics} />;
+	} catch (error) {
+		console.error('Erro ao carregar métricas:', error);
+		return (
+			<div className="p-4 text-center text-muted-foreground">
+				Erro ao carregar métricas. Tente novamente mais tarde.
+			</div>
+		);
+	}
 }
 
 export default function AlertsPage() {

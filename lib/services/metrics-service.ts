@@ -4,6 +4,16 @@ import { cacheWrapper } from '../redis';
 import { alertsService } from './alerts-service';
 import { BigQueryOrder } from '../types/bigquery';
 
+const DEFAULT_METRICS = {
+  totalAlerts: 0,
+  avgDelayDays: 0,
+  avgResolutionTime: 'N/A',
+  resolvedOrders: {
+    last30Days: 0,
+    last7Days: 0
+  }
+};
+
 export class MetricsService {
   private readonly CACHE_TTL = 300; // 5 minutos para métricas
 
@@ -36,11 +46,16 @@ export class MetricsService {
                 AND LOWER(JSON_EXTRACT_SCALAR(transportador_json_status, '$.formaEnvio.nome')) NOT IN ('retirada de funcionario', 'retirada funcionario')
               )
             )
-        `
+        `,
+        timeout: 5000 // 5 segundos de timeout
       });
 
       // Buscar métricas de tratativas em uma única query
-      const treatmentMetrics = await this.getTreatmentMetrics();
+      const treatmentMetrics = await this.getTreatmentMetrics().catch(() => ({
+        avgResolutionTime: 'N/A',
+        resolvedLast30Days: 0,
+        resolvedLast7Days: 0
+      }));
 
       const metrics = {
         totalAlerts: Number(result[0]?.total_alerts || 0),
@@ -58,7 +73,7 @@ export class MetricsService {
       return metrics;
     } catch (error) {
       console.error('Erro ao buscar métricas:', error);
-      throw error;
+      return DEFAULT_METRICS;
     }
   }
 
@@ -119,7 +134,7 @@ export class MetricsService {
       `
     );
 
-    const metrics = result.rows[0];
+    const metrics = result.rows[0] || { avg_resolution_hours: 0, resolved_30d: 0, resolved_7d: 0 };
     return {
       avgResolutionTime: metrics.avg_resolution_hours > 0 ? `${metrics.avg_resolution_hours}h` : 'N/A',
       resolvedLast30Days: metrics.resolved_30d || 0,
