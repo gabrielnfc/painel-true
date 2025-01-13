@@ -15,9 +15,9 @@ interface PoolMetrics {
 class Database {
   private pool: Pool | null = null;
   private readonly retryConfig: RetryConfig = {
-    maxRetries: 5,
-    initialDelay: 2000,
-    maxDelay: 30000
+    maxRetries: 3,
+    initialDelay: 1000,
+    maxDelay: 10000
   };
 
   constructor() {
@@ -33,18 +33,19 @@ class Database {
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 5,
+      max: 7,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 20000,
       allowExitOnIdle: true,
       application_name: 'painel-true',
-      statement_timeout: 5000,
-      query_timeout: 5000,
+      statement_timeout: 20000,
+      query_timeout: 20000,
     });
 
     this.pool.on('error', (err: Error) => {
       console.error('Erro inesperado no pool de conexões:', err);
       this.logError('pool_error', err);
+      this.logPoolMetrics();
       setTimeout(() => {
         console.log('Tentando reinicializar o pool de conexões...');
         this.initializePool();
@@ -53,6 +54,7 @@ class Database {
 
     this.pool.on('connect', (client: PoolClient) => {
       this.logInfo('new_connection', 'Nova conexão estabelecida com o banco de dados');
+      this.logPoolMetrics();
     });
   }
 
@@ -100,6 +102,14 @@ class Database {
     });
   }
 
+  private async logPoolMetrics(): Promise<void> {
+    const metrics = await this.getPoolMetrics();
+    this.logInfo('pool_metrics', 'Métricas do pool de conexões', {
+      ...metrics,
+      memory: process.memoryUsage()
+    });
+  }
+
   async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
     if (!this.pool) {
       this.initializePool();
@@ -108,19 +118,22 @@ class Database {
     return this.withRetry(async () => {
       try {
         const start = Date.now();
+        await this.logPoolMetrics();
         const result = await this.pool!.query<T>(text, params);
         const duration = Date.now() - start;
 
         this.logInfo('query_executed', 'Query executada com sucesso', {
           duration,
-          rowCount: result.rowCount
+          rowCount: result.rowCount,
+          queryFirstChars: text.substring(0, 50)
         });
 
         return result;
       } catch (error) {
         this.logError('query_error', error as Error, {
           query: text,
-          params
+          params,
+          queryFirstChars: text.substring(0, 50)
         });
         throw error;
       }
