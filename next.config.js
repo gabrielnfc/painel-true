@@ -16,9 +16,12 @@ const nextConfig = {
       },
     ],
   },
+  output: "standalone",
+  experimental: {
+    serverActions: true,
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Não incluir módulos do servidor no bundle do cliente
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
