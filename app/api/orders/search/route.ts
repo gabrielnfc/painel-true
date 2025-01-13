@@ -1,31 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { searchService } from '@/lib/services/search-service';
+import { NextResponse } from 'next/server';
+import { searchOrders } from '@/lib/services/orders-service';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const searchParams = request.nextUrl.searchParams;
+    const url = new URL(request.url);
+    const searchParams = new URLSearchParams(url.search);
     const query = searchParams.get('q') || '';
     const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '10');
-    const offset = (page - 1) * pageSize;
+    const limit = parseInt(searchParams.get('limit') || '10');
 
-    // Busca pedidos usando o serviço
-    const orders = await searchService.searchOrders(query, pageSize, offset);
-
-    return NextResponse.json({
-      data: orders,
-      pagination: {
-        page,
-        pageSize,
-        total: orders.length,
-        totalPages: Math.ceil(orders.length / pageSize)
-      }
-    });
+    const results = await searchOrders(query, page, limit);
+    return NextResponse.json(results);
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar pedidos' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar pedidos' }, { status: 500 });
   }
 }

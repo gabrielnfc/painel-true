@@ -1,25 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { treatmentService } from '@/lib/services/treatment-service';
-import { getAuth } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import { getTreatmentHistory } from '@/lib/services/treatments-service';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { userId } = getAuth(request);
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const url = new URL(request.url);
+    const orderId = url.searchParams.get('orderId');
+    
+    if (!orderId) {
+      return NextResponse.json({ error: 'OrderId é obrigatório' }, { status: 400 });
     }
 
-    const treatmentId = request.nextUrl.searchParams.get('id');
-    if (!treatmentId) {
-      return NextResponse.json({ error: 'Treatment ID is required' }, { status: 400 });
-    }
-
-    const history = await treatmentService.getTreatmentHistory(parseInt(treatmentId));
+    const history = await getTreatmentHistory(orderId);
     return NextResponse.json(history);
   } catch (error) {
     console.error('Error fetching treatment history:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Erro ao buscar histórico de tratamento' },
       { status: 500 }
     );
   }

@@ -284,6 +284,41 @@ export class AlertsService {
 
     return this.calculatePriorityLevel(diasAtraso);
   }
+
+  async getAlerts({ page, limit, type, status }: { page: number; limit: number; type?: string; status?: string }) {
+    try {
+      const delayedOrders = await this.getDelayedOrders();
+      
+      // Aplicar filtros
+      let filteredOrders = delayedOrders;
+      if (type) {
+        filteredOrders = filteredOrders.filter(order => order.type === type);
+      }
+      if (status) {
+        filteredOrders = filteredOrders.filter(order => order.treatment_status === status);
+      }
+
+      // Calcular paginação
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+
+      return {
+        data: paginatedOrders,
+        pagination: {
+          total: filteredOrders.length,
+          page,
+          pageSize: limit,
+          totalPages: Math.ceil(filteredOrders.length / limit)
+        }
+      };
+    } catch (error) {
+      console.error('Erro ao buscar alertas:', error);
+      throw error;
+    }
+  }
 }
 
-export const alertsService = new AlertsService(); 
+export const alertsService = new AlertsService();
+export const getAlerts = (params: { page: number; limit: number; type?: string; status?: string }) => 
+  alertsService.getAlerts(params); 
