@@ -1,6 +1,6 @@
-const { query } = require('../lib/db');
-const fs = require('fs');
-const path = require('path');
+import db from '../lib/db';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface ColumnInfo {
   column_name: string;
@@ -15,7 +15,7 @@ async function runMigration() {
 
     // Executa a migração
     console.log('Iniciando migração...');
-    await query(migrationSql);
+    await db.query(migrationSql);
     console.log('Migração concluída com sucesso!');
 
     // Verifica se as colunas foram criadas
@@ -25,7 +25,7 @@ async function runMigration() {
       WHERE table_name IN ('treatments', 'treatment_history') 
       AND column_name = 'complaint_reason';
     `;
-    const result = await query(checkColumns);
+    const result = await db.query(checkColumns);
     
     console.log('\nColunas criadas:');
     result.rows.forEach((row: ColumnInfo) => {

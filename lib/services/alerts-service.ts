@@ -1,6 +1,6 @@
 import { bigquery } from '../config/bigquery';
 import { BigQueryOrder } from '../types/bigquery';
-import { query } from '../db';
+import db from '../db';
 import { FINISHED_ORDER_STATUSES } from '../config/order-status';
 import { cacheWrapper } from '../redis';
 import { createHash } from 'crypto';
@@ -45,9 +45,7 @@ export class AlertsService {
       query: queryName,
       ...metrics,
       memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024,
-      bytesProcessed: metrics.bytesProcessed,
       cacheRatio: metrics.cacheHit ? 1 : 0,
-      queryId: metrics.queryId,
       executionTime: metrics.duration,
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
@@ -85,7 +83,6 @@ export class AlertsService {
         return JSON.parse(cachedData);
       }
 
-      const startTime = Date.now();
       const [result] = await bigquery.query({
         query: `
           WITH parsed_carriers AS (
@@ -103,20 +100,11 @@ export class AlertsService {
         `
       });
 
-      const duration = Date.now() - startTime;
-      
       const carriers = result
         .map((row: any) => row.carrier_name)
         .filter((name: string) => name && name !== 'Não definida');
 
       await cacheWrapper.set(cacheKey, JSON.stringify(carriers), this.CACHE_TTL.carriers);
-      
-      this.logQueryMetrics('getAvailableCarriers', {
-        duration,
-        rowCount: carriers.length,
-        cacheHit: false,
-        timestamp: new Date().toISOString()
-      });
 
       return carriers;
     } catch (error) {
@@ -140,18 +128,11 @@ export class AlertsService {
       const cachedData = await cacheWrapper.get(cacheKey);
       
       if (cachedData) {
-        this.logQueryMetrics('getDelayedOrders', {
-          duration: 0,
-          rowCount: JSON.parse(cachedData).length,
-          cacheHit: true,
-          timestamp: new Date().toISOString()
-        });
         return JSON.parse(cachedData);
       }
 
       const startTime = Date.now();
 
-      // Query otimizada usando a tabela em cache
       const [delayedOrders] = await bigquery.query({
         query: `
           WITH filtered_orders AS (
@@ -232,160 +213,45 @@ export class AlertsService {
         WHERE rn = 1
       `;
 
-      const treatments = await query(treatmentsQuery);
+      const treatments = await db.query(treatmentsQuery);
       
       // Criar dois mapas para busca por order_id e order_number
       const treatmentsByOrderId = new Map(treatments.rows.map(t => [t.order_id, t]));
       const treatmentsByOrderNumber = new Map(treatments.rows.map(t => [t.order_number, t]));
 
-      // Função auxiliar para formatar data
-      const formatDate = (dateStr: string | null): string => {
-        if (!dateStr) return '-';
-        
-        try {
-          // Se já está no formato brasileiro, retornar como está
-          if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-            return dateStr;
-          }
-          
-          // Se está no formato ISO
-          if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-              return date.toLocaleDateString('pt-BR');
-            }
-          }
-          
-          // Se está em outro formato, tentar converter
-          const date = new Date(dateStr);
-          if (!isNaN(date.getTime())) {
-            return date.toLocaleDateString('pt-BR');
-          }
-          
-          return '-';
-        } catch {
-          return '-';
-        }
-      };
-
-      // Combinar dados e calcular status
-      const result = delayedOrders.map(order => {
-        // Tentar encontrar tratativa pelo id_pedido ou numero_pedido
-        const treatment = treatmentsByOrderId.get(order.id_pedido?.toString()) || 
-                         treatmentsByOrderNumber.get(order.numero_pedido);
-        
-        // Extrair informações da transportadora
+      // Processar e formatar os pedidos
+      const processedOrders = delayedOrders.map((order: any) => {
+        const diasAtraso = parseInt(order.dias_atraso) || 0;
+        const priority = this.calculatePriorityLevel(diasAtraso);
+        const treatment = treatmentsByOrderId.get(order.id_pedido) || treatmentsByOrderNumber.get(order.numero_pedido);
         const carrierInfo = this.extractCarrierInfo(order.transportador_json_status);
-        
-        // Formatar datas
-        const dataPedido = order.data_pedido || '-';
-        const dataPrevista = order.vtex_data_prevista 
-          ? formatDate(order.vtex_data_prevista)
-          : (order.data_prevista || '-');
-        
-        // Se tem tratativa, priorizar os dados dela
-        if (treatment) {
-          const diasAtraso = treatment.new_delivery_deadline
-            ? Math.floor((new Date().getTime() - new Date(treatment.new_delivery_deadline).getTime()) / (1000 * 60 * 60 * 24))
-            : order.dias_atraso;
 
-          return {
-            ...order,
-            data_pedido: dataPedido,
-            data_prevista: treatment.new_delivery_deadline 
-              ? formatDate(treatment.new_delivery_deadline)
-              : dataPrevista,
-            dias_atraso: diasAtraso,
-            status_atraso: diasAtraso > 0 ? 'ATRASADO' : 'NO_PRAZO',
-            treatment_status: treatment.treatment_status,
-            delivery_status: treatment.delivery_status || order.status_transportadora || 'pending',
-            priority_level: this.normalizePriorityLevel(treatment.priority_level, diasAtraso),
-            cliente_json: order.cliente_json,
-            carrier_info: {
-              name: carrierInfo.name,
-              protocol: treatment.carrier_protocol || order.codigo_rastreamento || '-',
-              tracking_url: order.url_rastreamento || '-',
-              shipping_type: carrierInfo.shipping,
-              last_update: order.ultima_atualizacao_status 
-                ? formatDate(order.ultima_atualizacao_status)
-                : '-'
-            },
-            treatment_info: {
-              observations: treatment.observations || '-',
-              internal_notes: treatment.internal_notes || '-',
-              customer_contact: treatment.customer_contact || '-'
-            }
-          };
-        }
-
-        // Se não tem tratativa, usar dados originais
-        const priority = this.calculatePriorityLevel(order.dias_atraso);
         return {
           ...order,
-          data_pedido: dataPedido,
-          data_prevista: dataPrevista,
-          status_atraso: 'ATRASADO',
-          treatment_status: 'pending',
-          delivery_status: order.status_transportadora || 'pending',
-          priority_level: priority,
-          cliente_json: order.cliente_json,
+          priority,
+          treatment_status: treatment?.treatment_status || 'pending',
           carrier_info: {
             name: carrierInfo.name,
-            protocol: order.codigo_rastreamento || '-',
+            protocol: treatment?.carrier_protocol || order.codigo_rastreamento || '-',
             tracking_url: order.url_rastreamento || '-',
             shipping_type: carrierInfo.shipping,
             last_update: order.ultima_atualizacao_status 
-              ? formatDate(order.ultima_atualizacao_status)
+              ? new Date(order.ultima_atualizacao_status).toLocaleDateString('pt-BR')
               : '-'
-          },
-          treatment_info: {
-            observations: '-',
-            internal_notes: '-',
-            customer_contact: '-'
           }
         };
       });
-      
-      // Ordenar por prioridade e dias de atraso
-      result.sort((a, b) => {
-        const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-        const priorityDiff = (priorityOrder[b.priority_level] || 0) - (priorityOrder[a.priority_level] || 0);
-        return priorityDiff !== 0 ? priorityDiff : b.dias_atraso - a.dias_atraso;
-      });
-      
-      // Aplicar filtros adicionais em memória
-      let filteredResult = result;
 
-      if (filters.status) {
-        filteredResult = filteredResult.filter(order => 
-          order.treatment_status === filters.status
-        );
-      }
+      await cacheWrapper.set(cacheKey, JSON.stringify(processedOrders), this.CACHE_TTL.delayedOrders);
 
-      if (filters.priority) {
-        const priorityMap = {
-          '1': 'low',
-          '2': 'medium',
-          '3': 'medium',
-          '4': 'high',
-          '5': 'critical'
-        };
-        filteredResult = filteredResult.filter(order => 
-          order.priority_level === priorityMap[filters.priority as keyof typeof priorityMap]
-        );
-      }
-
-      // Salvar no cache após aplicar os filtros
-      await cacheWrapper.set(cacheKey, JSON.stringify(filteredResult), this.CACHE_TTL.delayedOrders);
-      
       this.logQueryMetrics('getDelayedOrders', {
-        duration,
-        rowCount: filteredResult.length,
+        duration: Date.now() - startTime,
+        rowCount: processedOrders.length,
         cacheHit: false,
         timestamp: new Date().toISOString()
       });
 
-      return filteredResult;
+      return processedOrders;
     } catch (error) {
       console.error('Erro ao buscar pedidos atrasados:', error);
       return [];

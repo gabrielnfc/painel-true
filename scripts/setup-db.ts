@@ -1,59 +1,35 @@
-require('dotenv').config({ path: '.env.local' });
-const { Pool } = require('pg');
-const fs = require('fs').promises;
-const path = require('path');
+import dotenv from 'dotenv';
+import { Pool } from 'pg';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+dotenv.config({ path: '.env.local' });
+
+const pool = new Pool({
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME,
+});
 
 async function setupDatabase() {
-  const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error('DATABASE_URL is required in environment variables');
-  }
-
-  const pool = new Pool({
-    connectionString,
-    ssl: {
-      rejectUnauthorized: false
-    }
-  });
-
   try {
-    console.log('Connecting to database...');
-    const client = await pool.connect();
-    console.log('Successfully connected to database!');
+    // Lê o arquivo SQL
+    const sqlFile = path.join(process.cwd(), 'lib/db/schema.sql');
+    const sqlContent = await fs.readFile(sqlFile, 'utf8');
 
-    // Lista todos os arquivos de migração
-    const migrationsDir = path.join(process.cwd(), 'lib', 'db', 'migrations');
-    const migrationFiles = await fs.readdir(migrationsDir);
+    // Executa as queries
+    console.log('Iniciando setup do banco de dados...');
+    await pool.query(sqlContent);
+    console.log('Setup do banco de dados concluído com sucesso!');
 
-    // Ordena os arquivos para garantir a execução na ordem correta
-    const sortedMigrationFiles = migrationFiles
-      .filter((file: string) => file.endsWith('.sql'))
-      .sort();
-
-    // Executa cada migração em sequência
-    for (const file of sortedMigrationFiles) {
-      console.log(`Reading migration file: ${file}`);
-      const migrationPath = path.join(migrationsDir, file);
-      const migrationSql = await fs.readFile(migrationPath, 'utf8');
-
-      console.log(`Running migration: ${file}`);
-      await client.query(migrationSql);
-      console.log(`Migration ${file} completed successfully!`);
-    }
-
-    client.release();
-    await pool.end();
-    console.log('All migrations completed successfully!');
   } catch (error) {
-    console.error('Error setting up database:', error);
-    throw error;
+    console.error('Erro ao executar setup do banco de dados:', error);
+    process.exit(1);
+  } finally {
+    await pool.end();
   }
 }
 
-setupDatabase()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error('Setup failed:', error);
-    process.exit(1);
-  }); 
+setupDatabase(); 

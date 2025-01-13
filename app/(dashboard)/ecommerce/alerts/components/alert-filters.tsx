@@ -19,10 +19,10 @@ import {
 	SheetTrigger,
 } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export function AlertFilters() {
+function FiltersContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const [isOpen, setIsOpen] = useState(false);
@@ -60,7 +60,7 @@ export function AlertFilters() {
 		Object.entries(filters).forEach(([key, value]) => {
 			if (value) params.append(key, value);
 		});
-		router.push(`/alerts?${params.toString()}`);
+		router.push(`/ecommerce/alerts?${params.toString()}`);
 		setIsOpen(false);
 	};
 
@@ -74,7 +74,7 @@ export function AlertFilters() {
 			dateTo: '',
 			carrier: '',
 		});
-		router.push('/alerts');
+		router.push('/ecommerce/alerts');
 		setIsOpen(false);
 	};
 
@@ -205,5 +205,13 @@ export function AlertFilters() {
 				</Sheet>
 			</div>
 		</div>
+	);
+}
+
+export function AlertFilters() {
+	return (
+		<Suspense fallback={<div>Carregando filtros...</div>}>
+			<FiltersContent />
+		</Suspense>
 	);
 }

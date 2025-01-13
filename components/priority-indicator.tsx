@@ -13,16 +13,14 @@ export function PriorityIndicator({
 }: PriorityIndicatorProps) {
 	const getPriorityColor = (level: number) => {
 		switch (level) {
-			case 1:
-				return 'bg-gray-400';
-			case 2:
-				return 'bg-blue-500';
-			case 3:
-				return 'bg-yellow-500';
 			case 4:
-				return 'bg-orange-500';
-			case 5:
 				return 'bg-red-500';
+			case 3:
+				return 'bg-orange-500';
+			case 2:
+				return 'bg-yellow-500';
+			case 1:
+				return 'bg-green-500';
 			default:
 				return 'bg-gray-400';
 		}
@@ -30,16 +28,14 @@ export function PriorityIndicator({
 
 	const getPriorityLabel = (level: number) => {
 		switch (level) {
+			case 4:
+				return 'Crítica';
+			case 3:
+				return 'Alta';
+			case 2:
+				return 'Média';
 			case 1:
 				return 'Baixa';
-			case 2:
-				return 'Média-Baixa';
-			case 3:
-				return 'Média';
-			case 4:
-				return 'Média-Alta';
-			case 5:
-				return 'Alta';
 			default:
 				return 'Não definida';
 		}

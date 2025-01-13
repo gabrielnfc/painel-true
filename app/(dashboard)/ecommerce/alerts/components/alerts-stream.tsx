@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { AlertsList } from './alerts-list';
+import AlertsList from './alerts-list';
 import { Skeleton } from '@/components/ui/skeleton';
 
 function AlertsLoading() {

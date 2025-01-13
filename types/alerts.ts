@@ -12,6 +12,16 @@ export interface AlertOrder {
   status_atraso: string;
   nivel_prioridade: number;
   status?: 'pending' | 'in_progress' | 'resolved';
+  numero_nota?: string;
+  codigo_rastreamento?: string;
+  carrier_info: {
+    name: string;
+    shipping: string;
+    protocol: string;
+    last_update: string;
+    tracking_url: string;
+  };
+  treatment_status?: 'pending' | 'in_progress' | 'resolved';
 }
 
 export interface AlertsResponse {

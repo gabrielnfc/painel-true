@@ -1,10 +1,10 @@
 import { bigquery } from '../config/bigquery';
-import { query } from '../db';
+import db from '../db';
 import { Treatment, CreateTreatmentDTO, UpdateTreatmentDTO, TreatmentWithOrder, TreatmentHistory } from '../types/treatment';
 
 export class TreatmentService {
   async createTreatment(data: CreateTreatmentDTO): Promise<Treatment> {
-    const result = await query(
+    const result = await db.query(
       `INSERT INTO treatments 
        (order_id, order_number, observations, internal_notes, customer_contact, carrier_protocol,
         new_delivery_deadline, resolution_deadline, follow_up_date,
@@ -27,12 +27,12 @@ export class TreatmentService {
         data.action_taken || '',
         data.resolution_type || 'other',
         data.complaint_reason || 'not_applicable',
-        data.identified_problem || 'unspecified'
+        data.identified_problem || 'carrier_hold'
       ]
     );
 
     // Criar histórico inicial
-    await query(
+    await db.query(
       `INSERT INTO treatment_history 
        (treatment_id, user_id, user_name, observations, internal_notes, customer_contact, 
         carrier_protocol, new_delivery_deadline, resolution_deadline, follow_up_date,
@@ -160,7 +160,7 @@ export class TreatmentService {
     }
 
     values.push(id);
-    const result = await query(
+    const result = await db.query(
       `UPDATE treatments 
        SET ${updates.join(', ')}
        WHERE id = $${paramCount}
@@ -188,7 +188,7 @@ export class TreatmentService {
   }
 
   async getTreatmentByOrderId(orderId: string): Promise<Treatment | null> {
-    const result = await query(
+    const result = await db.query(
       'SELECT * FROM treatments WHERE order_id = $1',
       [orderId]
     );
@@ -389,7 +389,7 @@ export class TreatmentService {
       const orderIds = delayedOrders.map(order => order.id_pedido);
 
       // Busca todos os tratamentos em uma única consulta
-      const treatmentsResult = await query(
+      const treatmentsResult = await db.query(
         `SELECT t.*, 
                 EXISTS (
                     SELECT 1 
@@ -618,7 +618,7 @@ export class TreatmentService {
   async getTreatmentsByOrderIds(orderIds: string[]): Promise<Treatment[]> {
     if (!orderIds.length) return [];
     
-    const result = await query(
+    const result = await db.query(
       'SELECT * FROM treatments WHERE order_id = ANY($1)',
       [orderIds]
     );
@@ -668,7 +668,7 @@ export class TreatmentService {
       action_taken: '',
       resolution_type: 'other',
       complaint_reason: 'not_applicable',
-      identified_problem: 'unspecified'
+      identified_problem: 'carrier_hold'
     });
 
     // Criar registro no histórico para o tratamento automático
@@ -690,7 +690,7 @@ export class TreatmentService {
         action_taken: '',
         resolution_type: 'other',
         complaint_reason: 'not_applicable',
-        identified_problem: 'unspecified'
+        identified_problem: 'carrier_hold'
       }
     );
 
@@ -703,7 +703,7 @@ export class TreatmentService {
     userName: string,
     data: UpdateTreatmentDTO
   ): Promise<TreatmentHistory> {
-    const result = await query(
+    const result = await db.query(
       `INSERT INTO treatment_history 
        (treatment_id, user_id, user_name, observations, internal_notes,
         customer_contact, carrier_protocol, new_delivery_deadline,
@@ -728,7 +728,7 @@ export class TreatmentService {
         data.action_taken,
         data.resolution_type,
         data.complaint_reason || 'not_applicable',
-        data.identified_problem || 'unspecified'
+        data.identified_problem || 'carrier_hold'
       ]
     );
 
@@ -736,7 +736,7 @@ export class TreatmentService {
   }
 
   async getTreatmentHistory(treatmentId: number): Promise<TreatmentHistory[]> {
-    const result = await query(
+    const result = await db.query(
       'SELECT * FROM treatment_history WHERE treatment_id = $1 ORDER BY created_at DESC',
       [treatmentId]
     );
@@ -746,7 +746,7 @@ export class TreatmentService {
 
   private async updateOrderProgress(orderId: string, status: string): Promise<void> {
     try {
-      await query(
+      await db.query(
         `INSERT INTO order_progress (order_id, status, created_at)
          VALUES ($1, $2, CURRENT_TIMESTAMP)
          ON CONFLICT (order_id) 

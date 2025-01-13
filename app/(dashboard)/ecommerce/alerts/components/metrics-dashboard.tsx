@@ -78,7 +78,7 @@ function MetricCard({
 								<div
 									className="h-2 rounded bg-primary"
 									style={{
-										width: `${(parseInt(subValue) / value) * 100}%`,
+										width: `${(Number(subValue) / Number(value)) * 100}%`,
 									}}
 								/>
 							</div>

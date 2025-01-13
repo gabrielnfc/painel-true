@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { InfoItem } from '../../../components/ui/info-item';
+import { InfoItem } from '../../../../components/ui/info-item';
 
 interface SearchResult {
 	id_pedido: string;
@@ -39,7 +39,7 @@ function SearchContent() {
 	useEffect(() => {
 		const fetchResults = async () => {
 			if (!query) {
-				router.push('/');
+				router.push('/ecommerce/orders/search');
 				return;
 			}
 
@@ -73,7 +73,7 @@ function SearchContent() {
 				<h1 className="text-2xl font-bold">Resultados da Busca</h1>
 				<Button
 					variant="outline"
-					onClick={() => router.push('/')}
+					onClick={() => router.push('/ecommerce/orders/search')}
 					className="gap-2"
 				>
 					<ArrowLeft className="h-4 w-4" />

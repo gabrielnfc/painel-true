@@ -404,8 +404,9 @@ export default function ReportPage() {
 
 			// Ajustar largura das colunas
 			worksheet.columns.forEach((column) => {
+				if (!column) return;
 				let maxLength = 0;
-				column.eachCell({ includeEmpty: true }, (cell) => {
+				(column as any).eachCell({ includeEmpty: true }, (cell: any) => {
 					const columnLength = cell.value ? cell.value.toString().length : 10;
 					if (columnLength > maxLength) {
 						maxLength = columnLength;

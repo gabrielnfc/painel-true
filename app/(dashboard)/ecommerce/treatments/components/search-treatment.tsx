@@ -38,7 +38,7 @@ export function SearchTreatment() {
 			}
 
 			// Redireciona para a página de detalhes do tratamento
-			router.push(`/treatments/${orderNumber.trim()}`);
+			router.push(`/ecommerce/treatments/${orderNumber.trim()}`);
 		} catch (error) {
 			console.error('Error searching order:', error);
 			toast.error(

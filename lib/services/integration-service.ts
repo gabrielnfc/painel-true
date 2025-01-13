@@ -1,7 +1,7 @@
-import { BigQueryService } from '../bigquery';
+import { BigQueryService } from '../config/bigquery';
 import { TreatmentService } from './treatment-service';
 import { calculateDaysDelayed } from '../utils/date-utils';
-import { Treatment, TreatmentWithOrder } from '../types/treatment';
+import { Treatment, TreatmentWithOrder, CreateTreatmentDTO } from '../types/treatment';
 
 export class IntegrationService {
   private bigQueryService: BigQueryService;
@@ -48,19 +48,28 @@ export class IntegrationService {
         // Buscar detalhes do pedido no BigQuery
         const orderDetails = await this.bigQueryService.searchOrder(orderId);
         
-        if (orderDetails && orderDetails.length > 0) {
-          const order = orderDetails[0];
-          const daysDelayed = calculateDaysDelayed(order.data_prevista);
+        if (orderDetails) {
+          const daysDelayed = calculateDaysDelayed(orderDetails.data_prevista);
           const priority = await this.treatmentService.calculatePriorityLevel(daysDelayed);
 
           // Criar novo tratamento com prioridade calculada
           const newTreatment = await this.treatmentService.createTreatment({
             order_id: orderId,
+            order_number: orderDetails.numero_pedido,
             observations: 'Tratamento automático iniciado',
-            new_delivery_deadline: new Date(order.data_prevista),
+            internal_notes: 'Criado automaticamente pelo sistema',
+            customer_contact: '',
+            carrier_protocol: '',
+            new_delivery_deadline: new Date(orderDetails.data_prevista),
             resolution_deadline: new Date(),
-            status: 'ongoing',
-            priority_level: priority
+            follow_up_date: new Date(),
+            delivery_status: 'delayed',
+            treatment_status: 'pending',
+            priority_level: priority,
+            action_taken: '',
+            resolution_type: 'other',
+            complaint_reason: 'delayed_order',
+            identified_problem: 'carrier_hold'
           });
 
           return newTreatment;
@@ -81,15 +90,16 @@ export class IntegrationService {
       if (treatment) {
         const orderDetails = await this.bigQueryService.searchOrder(orderId);
         
-        if (orderDetails && orderDetails.length > 0) {
-          const order = orderDetails[0];
-          const daysDelayed = calculateDaysDelayed(order.data_prevista);
+        if (orderDetails) {
+          const daysDelayed = calculateDaysDelayed(orderDetails.data_prevista);
           const newPriority = await this.treatmentService.calculatePriorityLevel(daysDelayed);
 
           if (newPriority !== treatment.priority_level) {
             const updatedTreatment = await this.treatmentService.updateTreatment(
               treatment.id,
-              { priority_level: newPriority }
+              { priority_level: newPriority },
+              'system',
+              'Sistema'
             );
             return updatedTreatment;
           }

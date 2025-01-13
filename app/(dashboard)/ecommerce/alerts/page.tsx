@@ -16,7 +16,7 @@ async function AlertMetrics() {
 	return <MetricsDashboard data={metrics} />;
 }
 
-export default async function AlertsPage() {
+export default function AlertsPage() {
 	return (
 		<div className="flex flex-col gap-6 p-6">
 			<div className="flex flex-col gap-2">
@@ -40,9 +40,30 @@ export default async function AlertsPage() {
 
 			<div className="rounded-lg border bg-card">
 				<div className="p-4 sm:p-6">
-					<AlertFilters />
+					<Suspense
+						fallback={
+							<div className="h-10 w-full bg-muted animate-pulse rounded-md" />
+						}
+					>
+						<AlertFilters />
+					</Suspense>
 				</div>
-				<AlertsList />
+				<Suspense
+					fallback={
+						<div className="p-4">
+							<div className="space-y-3">
+								{[...Array(5)].map((_, i) => (
+									<div
+										key={i}
+										className="h-16 bg-muted animate-pulse rounded-md"
+									/>
+								))}
+							</div>
+						</div>
+					}
+				>
+					<AlertsList />
+				</Suspense>
 			</div>
 		</div>
 	);

@@ -317,7 +317,7 @@ function ResultsContent() {
 	}, [searchParams]);
 
 	const handleBack = () => {
-		router.push('/orders/search');
+		router.push('/ecommerce/orders/search');
 	};
 
 	if (loading) {

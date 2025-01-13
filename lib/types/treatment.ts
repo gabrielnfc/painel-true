@@ -182,6 +182,8 @@ export interface CreateTreatmentDTO {
   complaint_reason: ComplaintReason;
   resolution_type?: 'redelivery' | 'refund' | 'replacement' | 'address_update' | 'other';
   identified_problem?: IdentifiedProblem;
+  userId?: string;
+  userName?: string;
 }
 
 export interface UpdateTreatmentDTO {

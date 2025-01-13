@@ -1,27 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import db from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const orderId = request.nextUrl.searchParams.get('orderId');
-    if (!orderId) {
-      return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
-    }
+    const result = await db.query(`
+      SELECT 
+        treatment_status,
+        COUNT(*) as count
+      FROM treatment_history th
+      JOIN (
+        SELECT treatment_id, MAX(created_at) as max_created_at
+        FROM treatment_history
+        GROUP BY treatment_id
+      ) latest ON th.treatment_id = latest.treatment_id 
+        AND th.created_at = latest.max_created_at
+      GROUP BY treatment_status
+      ORDER BY treatment_status;
+    `);
 
-    const result = await query(
-      'SELECT status FROM order_progress WHERE order_id = $1',
-      [orderId]
-    );
-
-    if (result.rows.length === 0) {
-      return NextResponse.json({ status: null });
-    }
-
-    return NextResponse.json({ status: result.rows[0].status });
+    return NextResponse.json(result.rows);
   } catch (error) {
     console.error('Error fetching treatment progress:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to fetch treatment progress' },
       { status: 500 }
     );
   }

@@ -1,4 +1,4 @@
-import { query } from '../db';
+import db from '../db';
 import { bigquery } from '../config/bigquery';
 import { cacheWrapper } from '../redis';
 import { alertsService } from './alerts-service';
@@ -63,59 +63,61 @@ export class MetricsService {
   }
 
   private async getTreatmentMetrics() {
-    const result = await query(`
-      WITH resolution_metrics AS (
+    const result = await db.query(
+      `
+        WITH resolution_metrics AS (
+          SELECT
+            t.order_id,
+            th.treatment_status,
+            th.created_at,
+            FIRST_VALUE(th.created_at) OVER (
+              PARTITION BY t.order_id 
+              ORDER BY th.created_at
+            ) as first_treatment,
+            FIRST_VALUE(th.created_at) OVER (
+              PARTITION BY t.order_id 
+              ORDER BY th.created_at DESC
+            ) as last_treatment,
+            ROW_NUMBER() OVER (
+              PARTITION BY t.order_id 
+              ORDER BY th.created_at DESC
+            ) as rn
+          FROM treatments t
+          JOIN treatment_history th ON th.treatment_id = t.id
+          WHERE th.created_at >= CURRENT_DATE - INTERVAL '30 days'
+        ),
+        resolution_times AS (
+          SELECT
+            order_id,
+            EXTRACT(EPOCH FROM (last_treatment - first_treatment))/3600 as hours_to_resolve
+          FROM resolution_metrics
+          WHERE rn = 1 
+          AND treatment_status = 'resolved'
+        ),
+        resolved_counts AS (
+          SELECT
+            COUNT(DISTINCT CASE 
+              WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' 
+              AND treatment_status = 'resolved' 
+              THEN order_id 
+            END) as resolved_30d,
+            COUNT(DISTINCT CASE 
+              WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' 
+              AND treatment_status = 'resolved' 
+              THEN order_id 
+            END) as resolved_7d
+          FROM resolution_metrics
+          WHERE rn = 1
+        )
         SELECT
-          t.order_id,
-          th.treatment_status,
-          th.created_at,
-          FIRST_VALUE(th.created_at) OVER (
-            PARTITION BY t.order_id 
-            ORDER BY th.created_at
-          ) as first_treatment,
-          FIRST_VALUE(th.created_at) OVER (
-            PARTITION BY t.order_id 
-            ORDER BY th.created_at DESC
-          ) as last_treatment,
-          ROW_NUMBER() OVER (
-            PARTITION BY t.order_id 
-            ORDER BY th.created_at DESC
-          ) as rn
-        FROM treatments t
-        JOIN treatment_history th ON th.treatment_id = t.id
-        WHERE th.created_at >= CURRENT_DATE - INTERVAL '30 days'
-      ),
-      resolution_times AS (
-        SELECT
-          order_id,
-          EXTRACT(EPOCH FROM (last_treatment - first_treatment))/3600 as hours_to_resolve
-        FROM resolution_metrics
-        WHERE rn = 1 
-        AND treatment_status = 'resolved'
-      ),
-      resolved_counts AS (
-        SELECT
-          COUNT(DISTINCT CASE 
-            WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' 
-            AND treatment_status = 'resolved' 
-            THEN order_id 
-          END) as resolved_30d,
-          COUNT(DISTINCT CASE 
-            WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' 
-            AND treatment_status = 'resolved' 
-            THEN order_id 
-          END) as resolved_7d
-        FROM resolution_metrics
-        WHERE rn = 1
-      )
-      SELECT
-        COALESCE(ROUND(AVG(rt.hours_to_resolve)::numeric, 1), 0) as avg_resolution_hours,
-        rc.resolved_30d,
-        rc.resolved_7d
-      FROM resolved_counts rc
-      LEFT JOIN resolution_times rt ON true
-      GROUP BY rc.resolved_30d, rc.resolved_7d
-    `);
+          COALESCE(ROUND(AVG(rt.hours_to_resolve)::numeric, 1), 0) as avg_resolution_hours,
+          rc.resolved_30d,
+          rc.resolved_7d
+        FROM resolved_counts rc
+        LEFT JOIN resolution_times rt ON true
+        GROUP BY rc.resolved_30d, rc.resolved_7d
+      `
+    );
 
     const metrics = result.rows[0];
     return {

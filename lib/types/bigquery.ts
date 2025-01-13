@@ -11,6 +11,8 @@ export interface BigQueryOrder {
   dias_atraso: number;
   status_atraso: string;
   nivel_prioridade: number;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  treatment_status: 'pending' | 'in_progress' | 'resolved';
   numero_ordem_compra?: string;
   data_expedicao?: string;
   situacao_pedido?: string;

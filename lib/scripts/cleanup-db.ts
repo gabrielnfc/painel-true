@@ -1,6 +1,6 @@
-const { Pool } = require('pg');
-const dotenv = require('dotenv');
-const path = require('path');
+import { Pool } from 'pg';
+import dotenv from 'dotenv';
+import path from 'path';
 
 // Carrega as variáveis de ambiente do arquivo .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });

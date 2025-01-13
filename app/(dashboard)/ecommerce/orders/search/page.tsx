@@ -40,7 +40,7 @@ export default function SearchOrdersPage() {
 			sortOrder: 'desc',
 		});
 
-		router.push(`/orders/results?${params.toString()}`);
+		router.push(`/ecommerce/orders/results?${params.toString()}`);
 	};
 
 	return (

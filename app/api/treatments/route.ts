@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TreatmentService } from '@/lib/services/treatment-service';
 import { CreateTreatmentDTO, UpdateTreatmentDTO } from '@/lib/types/treatment';
-import { auth } from '@clerk/nextjs';
-import { clerkClient } from '@clerk/nextjs';
+import { getAuth } from '@clerk/nextjs/server';
+import { clerkClient } from '@clerk/nextjs/server';
 
 const treatmentService = new TreatmentService();
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = getAuth(request);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = getAuth(request);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = getAuth(request);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -104,12 +104,6 @@ export async function PUT(request: NextRequest) {
     // Buscar informações do usuário do Clerk
     const user = await clerkClient.users.getUser(userId);
     const userName = `${user.firstName} ${user.lastName}`.trim();
-
-    // Garante que o tratamento existe antes de atualizar
-    const orderId = data.order_id;
-    if (orderId) {
-      await treatmentService.ensureTreatmentExists(orderId);
-    }
 
     const treatment = await treatmentService.updateTreatment(
       parseInt(treatmentId), 

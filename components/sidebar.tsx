@@ -51,27 +51,32 @@ const navigation = [
 	{
 		name: 'Atacado - Distribuição B2B',
 		icon: Building2,
+		href: '/wholesale',
 		children: [],
 	},
 	{
 		name: 'Financeiro',
 		icon: DollarSign,
+		href: '/financial',
 		children: [],
 	},
 	{
 		name: 'Marketing',
 		icon: TrendingUp,
+		href: '/marketing',
 		children: [],
 	},
 	{
 		name: 'RH',
 		icon: Users,
+		href: '/hr',
 		children: [],
 	},
 	{
 		name: 'Suporte & Feedback',
-		href: '/feedback',
 		icon: LifeBuoy,
+		href: '/support',
+		children: [],
 	},
 ];
 
@@ -79,6 +84,7 @@ export default function Sidebar() {
 	const [isOpen, setIsOpen] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [expandedItems, setExpandedItems] = useState<string[]>([]);
+	const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 	const pathname = usePathname();
 
 	const toggleExpand = (itemName: string) => {
@@ -129,8 +135,8 @@ export default function Sidebar() {
 					isOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0',
 					isExpanded ? 'lg:w-64' : 'lg:w-20'
 				)}
-				onMouseEnter={() => setIsExpanded(true)}
-				onMouseLeave={() => setIsExpanded(false)}
+				onMouseEnter={() => !isUserMenuOpen && setIsExpanded(true)}
+				onMouseLeave={() => !isUserMenuOpen && setIsExpanded(false)}
 			>
 				<div className="flex h-full flex-col">
 					{/* Logo and title */}
@@ -161,14 +167,15 @@ export default function Sidebar() {
 
 					{/* Navigation */}
 					<nav className="flex-1 px-2 py-4 overflow-y-auto scrollbar-none">
-						{navigation.map((item) => {
+						{navigation.map((item, index) => {
 							const isActive = isParentActive(item);
 							const hasChildren = item.children && item.children.length > 0;
 							const isItemExp = isItemExpanded(item.name);
+							const itemKey = item.name || item.href || `nav-item-${index}`;
 
 							return (
 								<div
-									key={item.name}
+									key={itemKey}
 									className="transition-all duration-200 ease-in-out mb-1"
 								>
 									{hasChildren ? (
@@ -272,7 +279,7 @@ export default function Sidebar() {
 												const isChildActive = pathname === child.href;
 												return (
 													<Link
-														key={child.name}
+														key={child.href}
 														href={child.href}
 														className={cn(
 															'group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ease-in-out',
@@ -323,6 +330,8 @@ export default function Sidebar() {
 									? 'flex-row items-center justify-between'
 									: 'flex-col items-center gap-4'
 							)}
+							onMouseEnter={() => setIsUserMenuOpen(true)}
+							onMouseLeave={() => setIsUserMenuOpen(false)}
 						>
 							<UserButton afterSignOutUrl="/" />
 							<ThemeToggle />
