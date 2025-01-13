@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getTreatmentHistory } from '../../../lib/services/treatment-service';
+import { TreatmentService } from '../../../lib/services/treatment-service';
+
+const treatmentService = new TreatmentService();
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +12,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'OrderId é obrigatório' }, { status: 400 });
     }
 
-    const history = await getTreatmentHistory(orderId);
+    const treatment = await treatmentService.getTreatmentByOrderId(orderId);
+    if (!treatment) {
+      return NextResponse.json({ error: 'Tratativa não encontrada' }, { status: 404 });
+    }
+
+    const history = await treatmentService.getTreatmentHistory(treatment.id);
     return NextResponse.json(history);
   } catch (error) {
     console.error('Erro ao buscar histórico de tratativas:', error);

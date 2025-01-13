@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { searchOrders } from '../../../lib/services/order-service';
+import { searchService } from '../../../lib/services/search-service';
 
 export async function GET(request: Request) {
   try {
@@ -8,9 +8,17 @@ export async function GET(request: Request) {
     const query = searchParams.get('q') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
+    const offset = (page - 1) * limit;
 
-    const results = await searchOrders(query, page, limit);
-    return NextResponse.json(results);
+    const results = await searchService.searchOrders(query, limit, offset);
+    return NextResponse.json({
+      data: results,
+      pagination: {
+        page,
+        pageSize: limit,
+        total: results.length
+      }
+    });
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
     return NextResponse.json({ error: 'Erro ao buscar pedidos' }, { status: 500 });
