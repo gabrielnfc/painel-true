@@ -101,10 +101,10 @@
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "14.1.0",
-    "@typescript-eslint/eslint-plugin": "^6.19.1",
-    "@typescript-eslint/parser": "^6.19.1",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.1.0",
     "ts-node": "^10.9.2"
   }
 }

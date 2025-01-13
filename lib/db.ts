@@ -33,17 +33,16 @@ class Database {
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10, // reduzido para evitar sobrecarga
-      idleTimeoutMillis: 60000, // aumentado para 1 minuto
-      connectionTimeoutMillis: 10000, // aumentado para 10 segundos
-      allowExitOnIdle: true, // permite que o pool seja fechado quando ocioso
-      application_name: 'painel-true', // identifica a aplicação nas conexões
+      max: 10,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 10000,
+      allowExitOnIdle: true,
+      application_name: 'painel-true',
     });
 
     this.pool.on('error', (err: Error) => {
       console.error('Erro inesperado no pool de conexões:', err);
       this.logError('pool_error', err);
-      // Tenta reinicializar o pool após erro
       setTimeout(() => {
         console.log('Tentando reinicializar o pool de conexões...');
         this.initializePool();
