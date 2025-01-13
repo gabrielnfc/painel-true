@@ -39,6 +39,10 @@ const nextConfig = {
       moduleIds: "deterministic",
       minimize: true,
     };
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      lib: require("path").resolve(__dirname, "./lib"),
+    };
     return config;
   },
   poweredByHeader: false,

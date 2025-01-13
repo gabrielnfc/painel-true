@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { TreatmentService } from '../../../lib/services/treatment-service';
+import { TreatmentService } from 'lib/services/treatment-service';
 
 const treatmentService = new TreatmentService();
 
