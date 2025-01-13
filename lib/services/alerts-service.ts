@@ -292,7 +292,7 @@ export class AlertsService {
       // Aplicar filtros
       let filteredOrders = delayedOrders;
       if (type) {
-        filteredOrders = filteredOrders.filter(order => order.type === type);
+        filteredOrders = filteredOrders.filter(order => order.situacao_pedido === type);
       }
       if (status) {
         filteredOrders = filteredOrders.filter(order => order.treatment_status === status);
