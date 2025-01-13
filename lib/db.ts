@@ -33,11 +33,13 @@ class Database {
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10,
-      idleTimeoutMillis: 60000,
-      connectionTimeoutMillis: 10000,
+      max: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
       allowExitOnIdle: true,
       application_name: 'painel-true',
+      statement_timeout: 5000,
+      query_timeout: 5000,
     });
 
     this.pool.on('error', (err: Error) => {
