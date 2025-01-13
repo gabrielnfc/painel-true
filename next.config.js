@@ -50,16 +50,6 @@ const nextConfig = {
   generateEtags: true,
   reactStrictMode: true,
   swcMinify: true,
-  staticPageGenerationTimeout: 120,
-  compiler: {
-    removeConsole: process.env.NODE_ENV === "production",
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 };
 
 module.exports = nextConfig;

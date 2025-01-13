@@ -49,13 +49,19 @@ export function TreatmentTimeline({
 
 	useEffect(() => {
 		async function fetchTreatmentHistory() {
+			console.log('Buscando histórico para tratamento:', treatmentId);
 			try {
 				const response = await fetch(
 					`/api/treatments/history?id=${treatmentId}`
 				);
+				console.log('Response status:', response.status);
 				if (response.ok) {
 					const data = await response.json();
+					console.log('Histórico recebido:', data);
 					setHistory(data);
+				} else {
+					const error = await response.json();
+					console.error('Erro ao buscar histórico:', error);
 				}
 			} catch (error) {
 				console.error('Error fetching treatment history:', error);
@@ -64,7 +70,12 @@ export function TreatmentTimeline({
 			}
 		}
 
-		fetchTreatmentHistory();
+		if (treatmentId) {
+			fetchTreatmentHistory();
+		} else {
+			console.error('TreatmentId não fornecido');
+			setLoading(false);
+		}
 	}, [treatmentId]);
 
 	const getStatusIcon = (status: string) => {

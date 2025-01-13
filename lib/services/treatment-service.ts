@@ -31,32 +31,6 @@ export class TreatmentService {
       ]
     );
 
-    // Criar histórico inicial
-    await db.query(
-      `INSERT INTO treatment_history 
-       (treatment_id, user_id, user_name, observations, internal_notes, customer_contact, 
-        carrier_protocol, new_delivery_deadline, resolution_deadline, follow_up_date,
-        delivery_status, treatment_status, priority_level, action_taken, resolution_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-      [
-        result.rows[0].id,
-        data.userId || 'system',
-        data.userName || 'Sistema',
-        data.observations || '',
-        data.internal_notes || '',
-        data.customer_contact || '',
-        data.carrier_protocol || '',
-        data.new_delivery_deadline,
-        data.resolution_deadline,
-        data.follow_up_date || null,
-        data.delivery_status,
-        data.treatment_status,
-        data.priority_level,
-        data.action_taken || '',
-        data.resolution_type || 'other'
-      ]
-    );
-
     // Atualiza o progresso do pedido
     await this.updateOrderProgress(
       data.order_id,
@@ -627,56 +601,84 @@ export class TreatmentService {
   }
 
   async ensureTreatmentExists(orderId: string): Promise<Treatment> {
-    // Verifica se já existe um tratamento
-    let existingTreatment = await this.getTreatmentByOrderId(orderId);
-    
-    if (existingTreatment) {
-      return existingTreatment;
-    }
+    try {
+      console.log('Verificando tratamento para pedido:', orderId);
+      
+      // Verifica se já existe um tratamento
+      let existingTreatment = await this.getTreatmentByOrderId(orderId);
+      
+      if (existingTreatment) {
+        console.log('Tratamento existente encontrado:', existingTreatment);
+        
+        // Verifica se existe histórico para o tratamento existente
+        const history = await this.getTreatmentHistory(existingTreatment.id);
+        
+        console.log('Histórico encontrado:', {
+          treatmentId: existingTreatment.id,
+          historyCount: history.length
+        });
+        
+        if (history.length === 0) {
+          console.log('Criando histórico inicial para tratamento existente');
+          
+          // Se não existe histórico, cria um
+          await this.createTreatmentHistory(
+            existingTreatment.id,
+            'system',
+            'Sistema',
+            {
+              observations: 'Histórico inicial criado',
+              internal_notes: 'Criado automaticamente pelo sistema',
+              delivery_status: existingTreatment.delivery_status,
+              treatment_status: existingTreatment.treatment_status,
+              priority_level: existingTreatment.priority_level,
+              new_delivery_deadline: existingTreatment.new_delivery_deadline,
+              resolution_deadline: existingTreatment.resolution_deadline,
+              follow_up_date: existingTreatment.follow_up_date,
+              action_taken: existingTreatment.action_taken,
+              resolution_type: existingTreatment.resolution_type,
+              complaint_reason: existingTreatment.complaint_reason,
+              identified_problem: existingTreatment.identified_problem
+            }
+          );
+        }
+        
+        return existingTreatment;
+      }
 
-    // Busca detalhes do pedido para calcular prioridade
-    const orderDetails = await this.getOrderDetails(orderId);
-    
-    if (!orderDetails) {
-      throw new Error('Pedido não encontrado');
-    }
+      console.log('Nenhum tratamento encontrado, buscando detalhes do pedido');
 
-    // Verifica novamente antes de criar para evitar duplicatas em chamadas concorrentes
-    existingTreatment = await this.getTreatmentByOrderId(orderId);
-    if (existingTreatment) {
-      return existingTreatment;
-    }
+      // Busca detalhes do pedido para calcular prioridade
+      const orderDetails = await this.getOrderDetails(orderId);
+      
+      if (!orderDetails) {
+        console.error('Pedido não encontrado:', orderId);
+        throw new Error('Pedido não encontrado');
+      }
 
-    // Calcula prioridade baseada nos dias de atraso
-    const daysDelayed = orderDetails.dias_atraso || 0;
-    const priorityLevel = await this.calculatePriorityLevel(daysDelayed);
+      console.log('Detalhes do pedido encontrados:', orderDetails);
 
-    // Cria novo tratamento
-    const newTreatment = await this.createTreatment({
-      order_id: orderId,
-      order_number: orderDetails.numero_pedido,
-      observations: 'Tratamento automático iniciado',
-      internal_notes: 'Criado automaticamente pelo sistema',
-      customer_contact: '',
-      carrier_protocol: '',
-      new_delivery_deadline: new Date(),
-      resolution_deadline: new Date(),
-      follow_up_date: new Date(),
-      delivery_status: 'pending',
-      treatment_status: 'pending',
-      priority_level: priorityLevel,
-      action_taken: '',
-      resolution_type: 'other',
-      complaint_reason: 'not_applicable',
-      identified_problem: 'carrier_hold'
-    });
+      // Verifica novamente antes de criar para evitar duplicatas em chamadas concorrentes
+      existingTreatment = await this.getTreatmentByOrderId(orderId);
+      if (existingTreatment) {
+        console.log('Tratamento encontrado na segunda verificação:', existingTreatment);
+        return existingTreatment;
+      }
 
-    // Criar registro no histórico para o tratamento automático
-    await this.createTreatmentHistory(
-      newTreatment.id,
-      'system',
-      'Sistema',
-      {
+      // Calcula prioridade baseada nos dias de atraso
+      const daysDelayed = orderDetails.dias_atraso || 0;
+      const priorityLevel = await this.calculatePriorityLevel(daysDelayed);
+
+      console.log('Criando novo tratamento:', {
+        orderId,
+        daysDelayed,
+        priorityLevel
+      });
+
+      // Cria novo tratamento
+      const newTreatment = await this.createTreatment({
+        order_id: orderId,
+        order_number: orderDetails.numero_pedido,
         observations: 'Tratamento automático iniciado',
         internal_notes: 'Criado automaticamente pelo sistema',
         customer_contact: '',
@@ -691,10 +693,39 @@ export class TreatmentService {
         resolution_type: 'other',
         complaint_reason: 'not_applicable',
         identified_problem: 'carrier_hold'
-      }
-    );
+      });
 
-    return newTreatment;
+      console.log('Novo tratamento criado:', newTreatment);
+      console.log('Criando histórico inicial para novo tratamento');
+
+      // Criar registro no histórico para o tratamento automático
+      await this.createTreatmentHistory(
+        newTreatment.id,
+        'system',
+        'Sistema',
+        {
+          observations: 'Tratamento automático iniciado',
+          internal_notes: 'Criado automaticamente pelo sistema',
+          customer_contact: '',
+          carrier_protocol: '',
+          new_delivery_deadline: newTreatment.new_delivery_deadline,
+          resolution_deadline: newTreatment.resolution_deadline,
+          follow_up_date: newTreatment.follow_up_date,
+          delivery_status: newTreatment.delivery_status,
+          treatment_status: newTreatment.treatment_status,
+          priority_level: newTreatment.priority_level,
+          action_taken: newTreatment.action_taken,
+          resolution_type: newTreatment.resolution_type,
+          complaint_reason: newTreatment.complaint_reason,
+          identified_problem: newTreatment.identified_problem
+        }
+      );
+
+      return newTreatment;
+    } catch (error) {
+      console.error('Erro ao garantir existência do tratamento:', error, { orderId });
+      throw error;
+    }
   }
 
   async createTreatmentHistory(
@@ -703,45 +734,93 @@ export class TreatmentService {
     userName: string,
     data: UpdateTreatmentDTO
   ): Promise<TreatmentHistory> {
-    const result = await db.query(
-      `INSERT INTO treatment_history 
-       (treatment_id, user_id, user_name, observations, internal_notes,
-        customer_contact, carrier_protocol, new_delivery_deadline,
-        resolution_deadline, follow_up_date, delivery_status,
-        treatment_status, priority_level, action_taken, resolution_type, complaint_reason, identified_problem)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-       RETURNING *`,
-      [
+    try {
+      console.log('Iniciando criação de histórico:', {
         treatmentId,
         userId,
         userName,
-        data.observations,
-        data.internal_notes,
-        data.customer_contact,
-        data.carrier_protocol,
-        data.new_delivery_deadline,
-        data.resolution_deadline,
-        data.follow_up_date,
-        data.delivery_status,
-        data.treatment_status,
-        data.priority_level,
-        data.action_taken,
-        data.resolution_type,
+        data
+      });
+
+      // Validação dos campos obrigatórios
+      if (!treatmentId) {
+        throw new Error('treatmentId é obrigatório');
+      }
+
+      // Garante que todos os campos tenham valores válidos
+      const values = [
+        treatmentId,
+        userId || 'system',
+        userName || 'Sistema',
+        data.observations || 'Sem observações',
+        data.internal_notes || '',
+        data.customer_contact || '',
+        data.carrier_protocol || '',
+        data.new_delivery_deadline || new Date(),
+        data.resolution_deadline || new Date(),
+        data.follow_up_date || null,
+        data.delivery_status || 'pending',
+        data.treatment_status || 'pending',
+        data.priority_level || 1,
+        data.action_taken || '',
+        data.resolution_type || 'other',
         data.complaint_reason || 'not_applicable',
         data.identified_problem || 'carrier_hold'
-      ]
-    );
+      ];
 
-    return result.rows[0];
+      console.log('Valores preparados para inserção:', values);
+
+      const result = await db.query(
+        `INSERT INTO treatment_history 
+         (treatment_id, user_id, user_name, observations, internal_notes,
+          customer_contact, carrier_protocol, new_delivery_deadline,
+          resolution_deadline, follow_up_date, delivery_status,
+          treatment_status, priority_level, action_taken, resolution_type, 
+          complaint_reason, identified_problem)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         RETURNING *`,
+        values
+      );
+
+      if (!result.rows[0]) {
+        console.error('Nenhum registro retornado após inserção');
+        throw new Error('Falha ao criar histórico');
+      }
+
+      console.log('Histórico criado com sucesso:', result.rows[0]);
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Erro ao criar histórico:', error, {
+        treatmentId,
+        userId,
+        userName,
+        data
+      });
+      throw error;
+    }
   }
 
   async getTreatmentHistory(treatmentId: number): Promise<TreatmentHistory[]> {
-    const result = await db.query(
-      'SELECT * FROM treatment_history WHERE treatment_id = $1 ORDER BY created_at DESC',
-      [treatmentId]
-    );
+    try {
+      console.log('Buscando histórico para tratamento:', treatmentId);
+      
+      const result = await db.query(
+        'SELECT * FROM treatment_history WHERE treatment_id = $1 ORDER BY created_at DESC',
+        [treatmentId]
+      );
 
-    return result.rows;
+      console.log('Resultado da busca de histórico:', {
+        treatmentId,
+        found: result.rows.length,
+        rows: result.rows
+      });
+
+      return result.rows;
+    } catch (error) {
+      console.error('Erro ao buscar histórico:', error, { treatmentId });
+      throw error;
+    }
   }
 
   private async updateOrderProgress(orderId: string, status: string): Promise<void> {

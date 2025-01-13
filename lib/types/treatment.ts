@@ -180,7 +180,25 @@ export interface CreateTreatmentDTO {
   priority_level: number;
   action_taken?: string;
   complaint_reason: ComplaintReason;
-  resolution_type?: 'redelivery' | 'refund' | 'replacement' | 'address_update' | 'other';
+  resolution_type?: 
+    | 'redelivery'
+    | 'refund'
+    | 'freight_refund'
+    | 'replacement'
+    | 'address_update'
+    | 'collection'
+    | 'shipping'
+    | 'sale'
+    | 'contact_customer'
+    | 'posting'
+    | 'confrontation'
+    | 'dispute'
+    | 'check_delivery_status'
+    | 'cancellation'
+    | 'return'
+    | 'delivery_suspension'
+    | 'gift_sending'
+    | 'other';
   identified_problem?: IdentifiedProblem;
   userId?: string;
   userName?: string;
@@ -199,7 +217,25 @@ export interface UpdateTreatmentDTO {
   priority_level?: number;
   action_taken?: string;
   complaint_reason?: ComplaintReason;
-  resolution_type?: 'redelivery' | 'refund' | 'replacement' | 'address_update' | 'other';
+  resolution_type?: 
+    | 'redelivery'
+    | 'refund'
+    | 'freight_refund'
+    | 'replacement'
+    | 'address_update'
+    | 'collection'
+    | 'shipping'
+    | 'sale'
+    | 'contact_customer'
+    | 'posting'
+    | 'confrontation'
+    | 'dispute'
+    | 'check_delivery_status'
+    | 'cancellation'
+    | 'return'
+    | 'delivery_suspension'
+    | 'gift_sending'
+    | 'other';
   identified_problem?: IdentifiedProblem;
 }
 
@@ -231,6 +267,24 @@ export interface TreatmentHistory {
   priority_level?: number;
   action_taken?: string;
   complaint_reason?: ComplaintReason;
-  resolution_type?: 'redelivery' | 'refund' | 'replacement' | 'address_update' | 'other';
+  resolution_type?: 
+    | 'redelivery'
+    | 'refund'
+    | 'freight_refund'
+    | 'replacement'
+    | 'address_update'
+    | 'collection'
+    | 'shipping'
+    | 'sale'
+    | 'contact_customer'
+    | 'posting'
+    | 'confrontation'
+    | 'dispute'
+    | 'check_delivery_status'
+    | 'cancellation'
+    | 'return'
+    | 'delivery_suspension'
+    | 'gift_sending'
+    | 'other';
   created_at: Date;
 } 

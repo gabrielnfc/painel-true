@@ -28,7 +28,7 @@ export class MetricsService {
       }
 
       // Buscar total real de alertas e média de atraso
-      const [result] = await bigquery.query({
+      const [rows] = await bigquery.query({
         query: `
           SELECT 
             COUNT(*) as total_alerts,
@@ -46,8 +46,7 @@ export class MetricsService {
                 AND LOWER(JSON_EXTRACT_SCALAR(transportador_json_status, '$.formaEnvio.nome')) NOT IN ('retirada de funcionario', 'retirada funcionario')
               )
             )
-        `,
-        timeout: 5000 // 5 segundos de timeout
+        `
       });
 
       // Buscar métricas de tratativas em uma única query
@@ -58,8 +57,8 @@ export class MetricsService {
       }));
 
       const metrics = {
-        totalAlerts: Number(result[0]?.total_alerts || 0),
-        avgDelayDays: Number((result[0]?.avg_delay_days || 0).toFixed(1)),
+        totalAlerts: Number(rows[0]?.total_alerts || 0),
+        avgDelayDays: Number((rows[0]?.avg_delay_days || 0).toFixed(1)),
         avgResolutionTime: treatmentMetrics.avgResolutionTime,
         resolvedOrders: {
           last30Days: treatmentMetrics.resolvedLast30Days,

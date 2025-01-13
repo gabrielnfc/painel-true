@@ -232,22 +232,22 @@ function AlertsContent() {
 								{alerts.data.map((alert) => (
 									<TableRow
 										key={alert.id_pedido}
-										className="hover:bg-muted/50 cursor-pointer"
+										className="hover:bg-muted/50 cursor-pointer relative"
 										onClick={() => handleOrderClick(alert.numero_pedido)}
 									>
-										<TableCell className="font-medium">
-											<div className="flex items-center gap-2">
-												<div
-													className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${
-														alert.priority === 'critical'
-															? 'bg-red-500'
-															: alert.priority === 'high'
-															? 'bg-orange-500'
-															: alert.priority === 'medium'
-															? 'bg-yellow-500'
-															: 'bg-green-500'
-													}`}
-												/>
+										<TableCell className="font-medium text-center relative">
+											<div
+												className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${
+													alert.priority === 'critical'
+														? 'bg-red-500'
+														: alert.priority === 'high'
+														? 'bg-orange-500'
+														: alert.priority === 'medium'
+														? 'bg-yellow-500'
+														: 'bg-green-500'
+												}`}
+											/>
+											<div className="flex items-center justify-center gap-2">
 												<TooltipProvider>
 													<Tooltip>
 														<TooltipTrigger>
@@ -313,7 +313,15 @@ function AlertsContent() {
 										<TableCell>
 											<Badge
 												variant="outline"
-												className={getPriorityBadgeColor(alert.priority)}
+												className={`${
+													alert.priority === 'critical'
+														? 'border-red-500 text-red-500'
+														: alert.priority === 'high'
+														? 'border-orange-500 text-orange-500'
+														: alert.priority === 'medium'
+														? 'border-yellow-500 text-yellow-500'
+														: 'border-green-500 text-green-500'
+												}`}
 											>
 												{getPriorityLabel(getPriorityNumber(alert.priority))}
 											</Badge>
