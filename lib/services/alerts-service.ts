@@ -22,7 +22,7 @@ interface QueryMetrics {
 export class AlertsService {
   private readonly CACHE_TTL = {
     carriers: 1800,     // 30 minutos para transportadoras
-    delayedOrders: 300, // 5 minutos para pedidos atrasados
+    delayedOrders: 900, // 15 minutos para pedidos atrasados (aumentado de 5 para 15 minutos)
     metrics: 900        // 15 minutos para métricas
   };
   
@@ -41,7 +41,7 @@ export class AlertsService {
   }
 
   private logQueryMetrics(queryName: string, metrics: QueryMetrics): void {
-    console.log('BigQuery metrics:', {
+    const metricsData = {
       query: queryName,
       ...metrics,
       memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024,
@@ -50,8 +50,55 @@ export class AlertsService {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
       queryType: 'bigquery',
-      service: 'alerts'
-    });
+      service: 'alerts',
+      // Métricas adicionais
+      heapStats: {
+        total: process.memoryUsage().heapTotal / 1024 / 1024,
+        used: process.memoryUsage().heapUsed / 1024 / 1024,
+        external: process.memoryUsage().external / 1024 / 1024
+      },
+      performance: {
+        queryDuration: metrics.duration,
+        cacheHit: metrics.cacheHit,
+        rowCount: metrics.rowCount,
+        timestamp: new Date().toISOString(),
+        // Métricas de particionamento
+        partitionInfo: {
+          dateRange: '90 days',
+          startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+          endDate: new Date().toISOString()
+        }
+      }
+    };
+
+    // Log principal
+    console.log('BigQuery metrics:', metricsData);
+
+    // Log separado para performance
+    if (metrics.duration > 5000) {
+      console.warn('Performance alert:', {
+        query: queryName,
+        duration: metrics.duration,
+        rowCount: metrics.rowCount,
+        timestamp: new Date().toISOString(),
+        partitionRange: '90 days'
+      });
+    }
+  }
+
+  private async logError(type: string, error: Error, context: Record<string, any> = {}): Promise<void> {
+    const errorData = {
+      type,
+      message: error.message,
+      stack: error.stack,
+      context,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      service: 'alerts',
+      memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024
+    };
+
+    console.error('Error in AlertsService:', errorData);
   }
 
   private extractCarrierInfo(transportadorJson: string | null): { name: string; shipping: string } {
@@ -113,11 +160,40 @@ export class AlertsService {
     }
   }
 
+  private async getCacheWithFallback(cacheKey: string): Promise<any | null> {
+    try {
+      const cachedData = await cacheWrapper.get(cacheKey);
+      if (cachedData) {
+        return JSON.parse(cachedData);
+      }
+      return null;
+    } catch (error) {
+      this.logError('cache_error', error as Error, { cacheKey });
+      return null;
+    }
+  }
+
+  private async setCacheWithRetry(cacheKey: string, data: any, ttl: number): Promise<void> {
+    try {
+      await cacheWrapper.set(cacheKey, JSON.stringify(data), ttl);
+    } catch (error) {
+      this.logError('cache_set_error', error as Error, { cacheKey });
+      // Tentar novamente com um TTL menor
+      try {
+        await cacheWrapper.set(cacheKey, JSON.stringify(data), Math.floor(ttl / 2));
+      } catch (retryError) {
+        this.logError('cache_set_retry_error', retryError as Error, { cacheKey });
+      }
+    }
+  }
+
   async getDelayedOrders(
     search?: string,
     carrier?: string,
-    filters: FilterOptions = {}
-  ): Promise<BigQueryOrder[]> {
+    filters: FilterOptions = {},
+    page: number = 1,
+    limit: number = 100
+  ): Promise<{ data: BigQueryOrder[]; total: number }> {
     try {
       const cacheKey = this.generateCacheKey('delayedOrders', {
         search,
@@ -132,6 +208,44 @@ export class AlertsService {
       }
 
       const startTime = Date.now();
+      const offset = (page - 1) * limit;
+
+      const [countResult] = await bigquery.query({
+        query: `
+          WITH filtered_orders AS (
+            SELECT COUNT(*) as total
+            FROM \`truebrands-warehouse.truebrands_warehouse.pedidos_atrasados_cache\`
+            WHERE 
+              PARSE_DATE('%d/%m/%Y', data_pedido) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+              AND dias_atraso > 0
+              AND situacao_pedido NOT IN UNNEST(@finishedOrderStatuses)
+              AND UPPER(situacao_pedido) != 'ENTREGUE'
+              ${search ? `AND (
+                numero_pedido = @search OR
+                id_pedido = @search OR
+                numero_ordem_compra = @search OR
+                id_nota_fiscal = @search
+              )` : ''}
+              ${carrier ? `AND REGEXP_CONTAINS(
+                LOWER(JSON_EXTRACT_SCALAR(transportador_json_status, '$.nome')),
+                LOWER(@carrier)
+              )` : ''}
+              ${filters.dateFrom ? `AND data_prevista_normalizada >= DATE(@dateFrom)` : ''}
+              ${filters.dateTo ? `AND data_prevista_normalizada <= DATE(@dateTo)` : ''}
+          )
+          SELECT total FROM filtered_orders
+        `,
+        params: {
+          finishedOrderStatuses: FINISHED_ORDER_STATUSES.orderStatus,
+          finishedCarrierStatuses: FINISHED_ORDER_STATUSES.carrierStatus,
+          ...(search && { search: search.trim() }),
+          ...(carrier && { carrier: carrier.trim() }),
+          ...(filters.dateFrom && { dateFrom: filters.dateFrom }),
+          ...(filters.dateTo && { dateTo: filters.dateTo })
+        }
+      });
+
+      const total = countResult[0]?.total || 0;
 
       const [delayedOrders] = await bigquery.query({
         query: `
@@ -139,7 +253,8 @@ export class AlertsService {
             SELECT *
             FROM \`truebrands-warehouse.truebrands_warehouse.pedidos_atrasados_cache\`
             WHERE 
-              dias_atraso > 0
+              PARSE_DATE('%d/%m/%Y', data_pedido) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+              AND dias_atraso > 0
               AND situacao_pedido NOT IN UNNEST(@finishedOrderStatuses)
               AND UPPER(situacao_pedido) != 'ENTREGUE'
               ${search ? `AND (
@@ -167,11 +282,14 @@ export class AlertsService {
               )
             )
           ORDER BY dias_atraso DESC
-          LIMIT 100
+          LIMIT @limit
+          OFFSET @offset
         `,
         params: {
           finishedOrderStatuses: FINISHED_ORDER_STATUSES.orderStatus,
           finishedCarrierStatuses: FINISHED_ORDER_STATUSES.carrierStatus,
+          limit,
+          offset,
           ...(search && { search: search.trim() }),
           ...(carrier && { carrier: carrier.trim() }),
           ...(filters.dateFrom && { dateFrom: filters.dateFrom }),
@@ -179,9 +297,6 @@ export class AlertsService {
         }
       });
 
-      const duration = Date.now() - startTime;
-
-      // Buscar todas as tratativas ativas
       const treatmentsQuery = `
         WITH latest_treatments AS (
           SELECT 
@@ -215,11 +330,9 @@ export class AlertsService {
 
       const treatments = await db.query(treatmentsQuery);
       
-      // Criar dois mapas para busca por order_id e order_number
       const treatmentsByOrderId = new Map(treatments.rows.map(t => [t.order_id, t]));
       const treatmentsByOrderNumber = new Map(treatments.rows.map(t => [t.order_number, t]));
 
-      // Processar e formatar os pedidos
       const processedOrders = delayedOrders.map((order: any) => {
         const diasAtraso = parseInt(order.dias_atraso) || 0;
         const priority = this.calculatePriorityLevel(diasAtraso);
@@ -242,7 +355,12 @@ export class AlertsService {
         };
       });
 
-      await cacheWrapper.set(cacheKey, JSON.stringify(processedOrders), this.CACHE_TTL.delayedOrders);
+      const result = {
+        data: processedOrders,
+        total
+      };
+
+      await cacheWrapper.set(cacheKey, JSON.stringify(result), this.CACHE_TTL.delayedOrders);
 
       this.logQueryMetrics('getDelayedOrders', {
         duration: Date.now() - startTime,
@@ -251,10 +369,10 @@ export class AlertsService {
         timestamp: new Date().toISOString()
       });
 
-      return processedOrders;
+      return result;
     } catch (error) {
       console.error('Erro ao buscar pedidos atrasados:', error);
-      return [];
+      return { data: [], total: 0 };
     }
   }
 
@@ -287,7 +405,11 @@ export class AlertsService {
 
   async getAlerts({ page, limit, type, status }: { page: number; limit: number; type?: string; status?: string }) {
     try {
-      const delayedOrders = await this.getDelayedOrders();
+      // Limita o número máximo de páginas a 10
+      const maxPages = 10;
+      const maxRecords = maxPages * limit;
+
+      const { data: delayedOrders, total } = await this.getDelayedOrders(undefined, undefined, {}, page, limit);
       
       // Aplicar filtros
       let filteredOrders = delayedOrders;
@@ -298,18 +420,18 @@ export class AlertsService {
         filteredOrders = filteredOrders.filter(order => order.treatment_status === status);
       }
 
-      // Calcular paginação
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+      // Calcula o total real de páginas, limitando a 10
+      const totalRecords = Math.min(total, maxRecords);
+      const totalPages = Math.min(Math.ceil(totalRecords / limit), maxPages);
 
       return {
-        data: paginatedOrders,
+        data: filteredOrders,
         pagination: {
-          total: filteredOrders.length,
+          total: totalRecords,
           page,
           pageSize: limit,
-          totalPages: Math.ceil(filteredOrders.length / limit)
+          totalPages,
+          hasMore: total > maxRecords
         }
       };
     } catch (error) {
